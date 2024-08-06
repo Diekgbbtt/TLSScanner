@@ -6,6 +6,16 @@ __version__ = "0.0.1"
 __author__ = "Diego Gobbetti"
 
 
+"""
+status :  handled tls1.3 and tls1.2
+"""
+""""
+todo : 
+    - handler of responses different than serverHello: changecipherspec, ... 
+    - prn or lower method should return a tls package crafted with the responses    
+"""
+
+
 
 import socket, sys
 import logging
@@ -25,14 +35,14 @@ CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,4918
 SUPP_CV = [24, 23, 22, 21, 29]
 SIGN_ALGS = [1027,1283,1539,2055,2056,2057,2058,2059,2052,2053,2054,1025,1281,1537]
 
+sock = SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM) 
+srv_rs = []
 
 def main():
      
-        sock = SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM) 
-        
-        sock.ins.bind(("192.168.1.46", 5895))
-        dstip=socket.gethostbyname("www.scapy.net")
-        sock.ins.connect((dstip, 443))
+        sock.ins.bind(("192.168.1.46", 5898))
+        dstip=socket.gethostbyname("www.w3schools.com")
+        sock.ins.connect((dstip, 443))      
         print(dstip)
         # sock = socket.create_connection((dstip, 443))
 
@@ -41,34 +51,36 @@ def main():
         srv_name = sock.ins.getpeername()
         print(srv_name)
 
+        sniffer = AsyncSniffer(prn=handleServerHello, session=TLSSession, iface="en0", store=False, filter=f"src host {dstip}") # 
+
         sock.send(bytes(ch_pk))
         # srv_rs = sock.recv(4096)
  
         # srv_rs = sr1(ch_pk) # filter=f"host {dstip}"
         # print(srv_rs)
-        # sniffer = AsyncSniffer(prn=handleServerHello, iface="en0", store=False) #  
-        # sniffer._run()
-        # time.sleep(20)
-        # sniffer.stop()
-        # print(sniffer.results)
-
-        sendrecv.tshark(iface="en0", session=TLSSession, filter=f"src host {dstip}") # prn=handleServerHello
-
-        # sniff(iface="en0", session=TLSSession, prn=handleServerHello, filter=f"src host {dstip}") #" opened_socket=sock, 
-        
+  
+        sniffer.start()
+        time.sleep(5)
+        sniffer.stop()
+        print("out of sleep")
+        print(sniffer.results)
         sock.close()
 
+        for rs in srv_rs:
+            rs.show()
 
+        # sendrecv.tshark(iface="en0", session=TLSSession, filter=f"src host {dstip}") # prn=handleServerHello
+        # sniff(prn=handleServerHello(), session=TLSSession, iface="en0", store=False, filter=f"src host {dstip}") #" opened_socket=sock, 
        #  rsp_dump_hex = (hexdump(srv_rs))
-
         # srv_hello_eth = Ether(import_hexcap(rsp_dump_hex))
-
         # print(srv_hello_eth.show())
-
         # srv_hello_ip = IP(raw(srv_hello_eth[Raw].load))
         # print(srv_hello_ip.show())
 
         return None
+
+
+
 
 
 def handleServerHello(srv_hello):
@@ -78,19 +90,28 @@ def handleServerHello(srv_hello):
             # print(f"server hello received , msg: \n {srv_hello['TLS'].msg[1]}")
             if srv_hello.haslayer('TLS'):
                 if srv_hello['TLS'].type == 22:
-                        if srv_hello['TLS'].msg[0].msgtype == 2:
-                            print(f"ServerHello received correclty : \n {srv_hello.show(dump=True)}")
+                        if srv_hello['TLS'].msg[0].msgtype in [2,11,12,13,14]:
+                            srv_rs.append(TLS(raw(srv_hello['TLS'])))
+                            # print(f"ServerHello received correclty : \n {srv_hello.show(dump=True)}")
+                            """
+                            for e in srv_hello['TLS'].msg[0].ext:
+                                if(isinstance(e, TLS_Ext_RenegotiationInfo)):
+                                    print("renegotiation fetched succesfully")
+                                    srvhelloAck = TCP(dport=443, seq=srv_hello['TCP'].ack)
+                                    srvhelloAck.show()
+                                    # sock.send(bytes(srvhelloAck))
+                            """
 
                         elif srv_hello['TLS'].msg[0].msgtype == 20:
                             print(f"Cipher spec request received \n. Cipher requested : {srv_hello['TLS'].msg[0].ciphers[0]} ")
             else:
                 print("not expected pkg received")
 
-                  
+                
         except:
             pass
-        
-        # return None
+    
+
 
 
 
