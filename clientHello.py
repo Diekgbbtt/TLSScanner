@@ -29,21 +29,25 @@ todo :
 
 
 
-import socket, sys, os
+import socket, sys, os,argparse, ssl
 import logging
 
-from scapy import sendrecv
-from scapy.all import sniff, hexdump, import_hexcap, AsyncSniffer, SuperSocket
+
+from scapy.all import AsyncSniffer, SuperSocket
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
+from scapy.layers.tls.crypto.suites import _tls_cipher_suites
+
 
 from cryptography.hazmat.primitives.asymmetric import *
-import scapy.supersocket
 
-
+def get_ciphers_for_version(protocol):
+    context = ssl.SSLContext(protocol)
+    return [cipher['id'] for cipher in context.get_ciphers()]
     
-CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
+TLS12_CIPHERS = get_ciphers_for_version(ssl.PROTOCOL_TLSv1_2)
+TLS13_CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
 SUPP_CV = [24, 23, 22, 21, 29]
 SUPP_CV_test = [29]
 SIGN_ALGS = [1027,1283,1539,2055,2056,2057,2058,2059,2052,2053,2054,1025,1281,1537]
@@ -51,11 +55,129 @@ SIGN_ALGS = [1027,1283,1539,2055,2056,2057,2058,2059,2052,2053,2054,1025,1281,15
 sock = SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM) 
 srv_rs = []
 
+
+def parse_args():
+     
+     """
+     istanziare ArgumentParser
+
+     parsare arguments, che vengono aggiunti al parser
+
+     controllare che gli args minimi siano stato forniti(target) e che tutti siano stati forniti correttamente
+
+     ritornare gli args - args = parser.parse_args()
+     """
+
+
+def tlsScan(args):
+     
+     """
+
+     Istanziare TLSScanner - da vedere come un processo separato
+
+     create scanResult object with evaluations of TLSScanner attributes
+
+     ritornare l'oggetto scanResults - che può essere visto come un dizionario
+        "targett {
+            "supportVersions": {
+                "tls1.3" : {
+                    "supported" : true/false
+                    "ciphers" : [ciphers]
+                    "curves" : [curves]
+                    "sign_algs" : [sign_algs]
+                },
+                "tls1.2" : {
+                    "supported" : true/false
+                    "ciphers" : [ciphers]
+                    "curves" : [curves]
+                    "sign_algs" : [sign_algs]
+                },
+
+                "tls1.1" : {
+                    "supported" : true/false
+                    "ciphers" : [ciphers]
+                    "curves" : [curves]
+                    "sign_algs" : [sign_algs]
+                },
+                
+                "tls1.0" : {
+                    "supported" : true/false
+                    "ciphers" : [ciphers]
+                    "curves" : [curves]
+                    "sign_algs" : [sign_algs]
+                } -- da implementare in qualche modo delle considerazioni di sicurezza sui ciphers e curve utilizzate
+            }
+            "certificate_info_{hostname}" : {
+                "version" : version,
+
+                "sign_alg" : sign_alg,
+                "signature" : {
+                    value : [signature]
+                    "is_valid" : true/false - verificare che sia correttta con la chiave pubblica della CA, presente nnell'ext auth key identifier
+                
+                }, -- che verfiche della firma del certificato si possono fare? , ..
+                "issuer" : {
+                    organization : [organization]
+                    country : [country]
+                    common_name : [common_name]
+                    is_selfSigned : true/false
+                }
+                subject : {
+                    common_name : [common_name]
+                    CA : {
+                        is_CA : true/false
+                        is_trusted : true/false
+                    }
+                    is_requestedSameName : true/false
+                }
+                validity : {
+                    notBefore : [notBefore]
+                    notAfter : [notAfter]
+                    is_expired : true/false
+                }
+                public_key : {
+                    algorithm : [algorithm]
+                    key : [key]
+                    is_correct : true/false; -- permette di decifrare la firma della chiave pubblica effimera, effettuata con la relativa chiave privata? https://chatgpt.com/c/c259fcc7-0d1d-4989-892d-453ef9ff4f32
+                }
+                extensions check...
+            }
+            vulnerabilities : {
+                "attacks" : {
+                    "attack_1" : true/false
+                    "attack_2" : true/false
+                    ....
+                }
+                "securityImplementation_issues" : {
+                    "SECURE_RENEGOTIATION" : true/false
+                    "TLS_FALLBACK_SCSV" : true/false
+                    ....
+                }
+
+        }
+     
+     """
+
 def main():
-        ch_pk = clientHello(hostname="www.target.com")
+        
+        """"
+        parse arguments
+
+
+        execute tlsScan
+
+
+        print scan results
+
+        """
+        
+        
+        parser = argparse.ArgumentParser()
+        
+        ch_pk = clientHello(hostname="chat.openai.com")
 
         sock.ins.bind(("192.168.1.46", 5899))
-        dstip=socket.gethostbyname("www.target.com")
+        dstip=socket.gethostbyname("chat.openai.com")
         sock.ins.connect((dstip, 443))      
         print(dstip)
         # sock = socket.create_connection((dstip, 443))
@@ -161,11 +283,11 @@ def generateKeys(groups):
             
             
 
-def clientHello(version=772, ciphers=CIPHERS, groups=SUPP_CV_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, hostname=None):
+def clientHello(version=770, ciphers=TLS12_CIPHERS, groups=SUPP_CV_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, hostname=None):
         try:
-            ch_pk = TLS(version=769, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
+            ch_pk = TLS(version=769, type=22, msg=[TLSClientHello(version=770, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
                                     TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=hostname.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=groups), \
-                                    TLS_Ext_SignatureAlgorithms(sig_algs=sign_algs), TLS_Ext_SupportedVersion_CH(versions=[771]), \
+                                    TLS_Ext_SignatureAlgorithms(sig_algs=sign_algs), TLS_Ext_SupportedVersion_CH(versions=[version]), \
                                     TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
                                     TLS_Ext_KeyShare_CH(client_shares=[])])]) #TLS_Ext_ServerName(servernames=hostname),
             """
@@ -210,6 +332,8 @@ def clientHello(version=772, ciphers=CIPHERS, groups=SUPP_CV_test, sign_algs=SIG
         ch_pk.show()
 
         return ch_pk
+
+
 
 
 if __name__ == "__main__":  
