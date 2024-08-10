@@ -32,6 +32,9 @@ todo :
 import socket, sys, os,argparse, ssl
 import logging
 
+from ecdsa import NIST192p, NIST224p, NIST256p, NIST384p, NIST521p, SECP256k1
+from ecdsa.keys import SigningKey
+
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.layers.tls.all import *
@@ -42,12 +45,10 @@ from scapy.layers.tls.crypto.suites import _tls_cipher_suites
 
 from cryptography.hazmat.primitives.asymmetric import *
 
-def get_ciphers_for_version(protocol):
-    context = ssl.SSLContext(protocol)
-    return [cipher['id'] for cipher in context.get_ciphers()]
-    
-TLS12_CIPHERS = get_ciphers_for_version(ssl.PROTOCOL_TLSv1_2)
-TLS13_CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
+
+CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
+TLS12_CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
+TLS13_CIPHERS = [4869, 4868, 4867, 4866, 4865]
 SUPP_CV = [24, 23, 22, 21, 29]
 SUPP_CV_test = [29]
 SIGN_ALGS = [1027,1283,1539,2055,2056,2057,2058,2059,2052,2053,2054,1025,1281,1537]
@@ -174,16 +175,17 @@ def main():
         
         parser = argparse.ArgumentParser()
         
-        ch_pk = clientHello(hostname="chat.openai.com")
+        ch_pk = clientHello(hostname="www.acmilan.com")
 
         sock.ins.bind(("192.168.1.46", 5899))
-        dstip=socket.gethostbyname("chat.openai.com")
+        dstip=socket.gethostbyname("www.acmilan.com")
         sock.ins.connect((dstip, 443))      
         print(dstip)
         # sock = socket.create_connection((dstip, 443))
 
         srv_name = sock.ins.getpeername()
         print(srv_name)
+
 
         sniffer = AsyncSniffer(prn=handleServerHello, session=TLSSession, iface="en0", store=False, filter=f"src host {dstip}") # stopfilter=lambda
 
@@ -192,7 +194,8 @@ def main():
  
         # srv_rs = sr1(ch_pk) # filter=f"host {dstip}"
         # print(srv_rs)
-  
+    
+
         sniffer.start()
         time.sleep(5)
         sniffer.stop()
@@ -247,7 +250,16 @@ def handleServerHello(srv_hello):
     
 
 
-
+def get_curve(curve_name):
+    curve_map = {
+        "secp192r1": NIST192p,
+        "secp224r1": NIST224p,
+        "secp256r1": NIST256p,
+        "secp384r1": NIST384p,
+        "secp521r1": NIST521p,
+        "secp256k1": SECP256k1,
+    }
+    return curve_map.get(curve_name)
 
 def generateKeys(groups):
         pubks_list =[]
@@ -257,24 +269,18 @@ def generateKeys(groups):
                 if(curves._tls_named_curves[curve] == "x25519"):
                     pv_key = x25519.X25519PrivateKey.generate()
                     pu_key = pv_key.public_key()
-
+                    pu_key_raw = pu_key.public_bytes(encoding=serialization.Encoding.Raw,
+                        format=serialization.PublicFormat.Raw)
                 else:
-                    pv_key = ec.generate_private_key(ec._CURVE_TYPES[curves._tls_named_curves[curve]])
-                    pu_key = pv_key.public_key()
-                    print(pu_key.curve.name)
-
+                    curve_obj = get_curve(curves._tls_named_curves[curve])
+                    if curve_obj:
+                        sk = SigningKey.generate(curve=curve_obj)
+                        pu_key = sk.get_verifying_key()
+                        pu_key_raw = pu_key.to_string("raw")
             except:
                 print("not supported curve type")
                 sys.exit(1)
-
-
-            pu_key_raw = pu_key.public_bytes(encoding=serialization.Encoding.Raw,
-                    format=serialization.PublicFormat.Raw)
             
-
-
-
-            print(pu_key_raw)
 
             pubks_list.append(pu_key_raw)
 
@@ -283,12 +289,12 @@ def generateKeys(groups):
             
             
 
-def clientHello(version=770, ciphers=TLS12_CIPHERS, groups=SUPP_CV_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, hostname=None):
+def clientHello(version=771, ciphers=TLS12_CIPHERS, groups=SUPP_CV, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, hostname=None):
         try:
-            ch_pk = TLS(version=769, type=22, msg=[TLSClientHello(version=770, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
+            ch_pk = TLS(version=769, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
                                     TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=hostname.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=groups), \
                                     TLS_Ext_SignatureAlgorithms(sig_algs=sign_algs), TLS_Ext_SupportedVersion_CH(versions=[version]), \
-                                    TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
+                                    TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), 
                                     TLS_Ext_KeyShare_CH(client_shares=[])])]) #TLS_Ext_ServerName(servernames=hostname),
             """
             version 1.2
