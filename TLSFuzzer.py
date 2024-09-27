@@ -6,6 +6,6 @@ __author__ = "Diego Gobbetti"
 
 """
 more complex analysis, based on attributes of TLSScanner performs
-some requests with randomly generated input values to check for further more complex potential vulnrabilities
+some requests with randomly generated input values to check for further more complex potential vulnerabilities
 to implement in future versions
 """
