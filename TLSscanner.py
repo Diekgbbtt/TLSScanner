@@ -271,7 +271,6 @@ class TLSscanner():
 			def scan_compression(self):
 
 			def scan_secure_renegotiation(self):
-
 			
 			def scan_heartbeat(self):
 		

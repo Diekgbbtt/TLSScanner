@@ -16,7 +16,7 @@ todo :
             - if the server decide to use exchange method with psk ecdh, it expects a keyshare and I can't create a proper clienthello packet --> fixed
             - server reveal that there is a previous session so it provieds a sessione id or ticket in the reply and skip verification.
             - PSK-based handshake(TLS1.3), a changecipherspec is used and included in the server hello, to diguise the session as tls1.2 
-                for middleboxes compatibility(sw/hw in the middle of a connection that filter/modify packets)
+            for middleboxes compatibility(sw/hw in the middle of a connection that filter/modify packets)
         the bottom line is in tls1.3 everythin that follows serverhello is encrypted with teh session key and authneticated, so are the certificates and certifcate verify messages. That appear as
         application data in the following tls messsages --> watch test in scapy repo with tlssession mirror to decrypt
         So I should decrypted the followign message to retrive certificate in tls1.3. Otherwise in tls1.2(wordreference.com) the certificate is sent in 
@@ -215,8 +215,6 @@ def main():
         # print(srv_hello_ip.show())
 
         return None
-
-
 
 
 
