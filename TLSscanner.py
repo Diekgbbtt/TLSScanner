@@ -125,6 +125,7 @@ class TLSscanner():
 			if prn is None:
 				prn = self.get_tlsInfo
 			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, filter=f"src host {self.targetIP}")
+			self.sniffer
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
 		def get_supportedProtocols(self):
@@ -281,8 +282,6 @@ class TLSscanner():
 
 
 		"""
-
-
 
 
 if __name__ == "__main__":
