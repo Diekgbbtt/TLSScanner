@@ -45,9 +45,10 @@ from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
 
+"""
 from ecdsa import NIST192p, NIST224p, NIST256p, NIST384p, NIST521p, SECP256k1
 from ecdsa.keys import SigningKey
-
+"""
 
 TLS12_CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
 TLS13_CIPHERS = [4869, 4868, 4867, 4866, 4865]
