@@ -40,6 +40,9 @@ execute_scan
 
 import socket, sys, os, ssl
 
+import logging
+import warnings
+
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
@@ -58,7 +61,8 @@ SUPP_CV_GROUPS = [24, 23, 22, 21, 29] # da aggiungere X25519Kyber768Draft00
 SUPP_CV_GROUPS_test  = [24, 23, 29] 
 SIGN_ALGS = [1027,1283,1539,2055,2053,2054,1025,1281,1537]
 
-
+warnings.filterwarnings("ignore")
+logging.getLogger("scapy").setLevel(logging.CRITICAL)
 
 class TLSscanner():
 
