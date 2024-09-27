@@ -236,13 +236,11 @@ def handleServerHello(srv_hello):
                                     srvhelloAck.show()
                                     # sock.send(bytes(srvhelloAck))
                             """
-
                         elif srv_hello['TLS'].msg[0].msgtype == 20:
                             print(f"Cipher spec request received \n")
             else:
                 print("not expected pkg received")
-
-                
+        
         except:
             pass
     
@@ -312,8 +310,6 @@ def clientHello(version=771, ciphers=TLS12_CIPHERS, groups=SUPP_CV, sign_algs=SI
             print(e)
             sys.exit(1)
 
-        
-            
 
         if not pubkeys:
             pubkeys = generateKeys(groups)
