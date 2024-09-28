@@ -100,7 +100,6 @@ class TLSscanner():
 
 		def getIPv4(self):
 			self.targetIP= socket.gethostbyname(self.target)
-			print(f"targetIP: {self.targetIP}")
 
 
 
@@ -139,15 +138,20 @@ class TLSscanner():
 			self.sniffer.start()
 			for i in range(769, 773):
 				ch_pk = self.craft_clientHello(version=i)
+				
 				self.send(ch_pk)
 				time.sleep(3)
 			self.sniffer.stop()
+			for sp in self.supportedProtocols:
+					print(f"{sp} supported")
+			for sp in self.NotsupportedProtocols:
+					print(f"{sp} not supported")
 		
 		def check_protos(self, srv_hello):
 			try:
 
 				if srv_hello.haslayer('TLS'):
-					print(f"srv_hello: {srv_hello[TLS].show()}")
+					print(f"srv_hello received \n {srv_hello[TLS].summary()}")
 					if srv_hello['TLS'].type == 22:
 						print(f"srv_hello: {srv_hello[TLS].show()}")
 						self.supportedProtocols.append(srv_hello['TLS'].version)
@@ -180,7 +184,7 @@ class TLSscanner():
 					ciphers = TLS13_CIPHERS
 				
 			try:
-				ch_pk = TLS(version=769, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
+				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=self.sign_algs), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
@@ -212,8 +216,6 @@ class TLSscanner():
 				ch_pk[TLSClientHello].ext[8].client_shares.append(KeyShareEntry(group=curve, key_exchange=pu_key, kxlen=len((pu_key))))
 
 			ch_pk[TLS].len = len(raw(ch_pk[TLSClientHello]))
-
-
 
 			return ch_pk
 		
