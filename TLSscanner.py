@@ -138,7 +138,7 @@ class TLSscanner():
 			self.sniffer.start()
 			for i in range(769, 773):
 				ch_pk = self.craft_clientHello(version=i)
-				
+				print(f"client_hello version {i} : \n {ch_pk[TLS].show()}")
 				self.send(ch_pk)
 				time.sleep(3)
 			self.sniffer.stop()
@@ -158,6 +158,7 @@ class TLSscanner():
 					elif srv_hello['TLS'].type == 21:
 						if srv_hello['TLS'].msg[0].level == 2:
 							print(f"{srv_hello[TLS].version} not supported")
+							print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
 							self.NotsupportedProtocols.append(srv_hello['TLS'].version)
 					else:
 						pass
