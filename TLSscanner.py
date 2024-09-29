@@ -77,7 +77,6 @@ class TLSscanner():
 			self.sign_algs = sign_algs
 		
 		def scan(self):
-			self.connect()
 			# self.create_sniffer()
 			self.get_supportedProtocols()
 			self.sock.close()
@@ -137,10 +136,11 @@ class TLSscanner():
 			# self.create_sniffer(prn=self.check_protos)
 			# self.sniffer.start()
 			for i in range(769, 773):
+				self.connect()
 				ch_pk = self.craft_clientHello(version=i)
 				print(f"client_hello version {i} : \n {ch_pk.show()}")
 				self.send(ch_pk)
-				sh_pk = sniff(count=1, iface="en0", store=False, filter=f"src host {self.targetIP}")
+				sh_pk = sniff(count=1, iface="en0", store=False, filter=f"src host {self.targetIP}", prn=check_protos)
 				print(f"{sh_pk}")
 				# sh_pk[0].show()
 				# if sh_pk[0].haslayer('TLS'):
@@ -156,7 +156,6 @@ class TLSscanner():
 				# 	else:
 				# 		pass
 				self.sock.close()
-				self.connect()
 				time.sleep(3)
 			# self.sniffer.stop()
 			for sp in self.supportedProtocols:
