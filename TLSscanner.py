@@ -127,69 +127,56 @@ class TLSscanner():
 		def create_sniffer(self, prn=None):
 			if prn is None:
 				prn = self.get_tlsInfo
-			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, filter=f"src host {self.targetIP}")
+			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, filter=f"src host {self.target}")
 			self.sniffer
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
 		def get_supportedProtocols(self):
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
-			# self.create_sniffer(prn=self.check_protos)
-			# self.sniffer.start()
+			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x))
+			self.sniffer.start()
 			for i in range(769, 773):
 				self.connect()
+
 				ch_pk = self.craft_clientHello(version=i)
 				print(f"client_hello version {i} : \n {ch_pk.show()}")
+				
 				self.send(ch_pk)
-				sh_pk = sniff(count=1, iface="en0", store=False, filter=f"src host {self.targetIP}", prn=check_protos)
-				print(f"{sh_pk}")
-				# sh_pk[0].show()
-				# if sh_pk[0].haslayer('TLS'):
-				# 	print(f"srv_hello received \n {sh_pk[0][TLS].summary()}")
-				# 	if sh_pk[0]['TLS'].type == 22:
-				# 		print(f"srv_hello: {sh_pk[0][TLS].show()}")
-				# 		self.supportedProtocols.append(sh_pk[0]['TLS'].version)
-				# 	elif sh_pk[0]['TLS'].type == 21:
-				# 		if sh_pk[0]['TLS'].msg[0].level == 2:
-				# 			print(f"{sh_pk[0][TLS].version} not supported")
-				# 			print(f"not supported version srv_hello: \n {sh_pk[0][TLS].show()}")
-				# 			self.NotsupportedProtocols.append(sh_pk[0]['TLS'].version)
-				# 	else:
-				# 		pass
+				
 				self.sock.close()
 				time.sleep(3)
-			# self.sniffer.stop()
+			self.sniffer.stop()
 			for sp in self.supportedProtocols:
 					print(f"{sp} supported")
 			for sp in self.NotsupportedProtocols:
 					print(f"{sp} not supported")
-		
-		def check_protos(self, srv_hello):
+	
+	
+		def check_protos(self, version, srv_hello):
 			try:
 
 				if srv_hello.haslayer('TLS'):
 					print(f"srv_hello received \n {srv_hello[TLS].summary()}")
 					if srv_hello['TLS'].type == 22:
 						print(f"srv_hello: {srv_hello[TLS].show()}")
-						self.supportedProtocols.append(srv_hello['TLS'].version)
+						self.supportedProtocols.append(version)
 					elif srv_hello['TLS'].type == 21:
 						if srv_hello['TLS'].msg[0].level == 2:
 							print(f"{srv_hello[TLS].version} not supported")
 							print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
-							self.NotsupportedProtocols.append(srv_hello['TLS'].version)
+							self.NotsupportedProtocols.append(version)
 					else:
 						pass
-					self.sock.close()
-					self.connect()
-			
+	
 			except:
 				print("not expected pkg received")
-			"""
-			for v in self.supportedProtocols:
-				print(f"Supported protocol: {v} \n")
-			for v in self.NotsupportedProtocols:
-				print(f"Not supported protocol: {v} \n")
-			"""
-	
+				"""
+				for v in self.supportedProtocols:
+					print(f"Supported protocol: {v} \n")
+				for v in self.NotsupportedProtocols:
+					print(f"Not supported protocol: {v} \n")
+				"""
+		
 		def craft_clientHello(self, version=771, ciphers=TLS12_CIPHERS, pubkeys=None, pskkxmodes=1):
 			
 			if version != 771:
