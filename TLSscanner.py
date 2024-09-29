@@ -43,7 +43,7 @@ import socket, sys, os, ssl
 import logging
 import warnings
 
-from scapy.all import AsyncSniffer, SuperSocket, sr1
+from scapy.all import AsyncSniffer, SuperSocket, sr1, sr, srp
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
@@ -136,23 +136,25 @@ class TLSscanner():
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
 			# self.create_sniffer(prn=self.check_protos)
 			# self.sniffer.start()
+			ch_pk = (IP(dst=self.targetIP, )
 			for i in range(769, 773):
-				ch_pk = self.craft_clientHello(version=i)
+				ch_record = self.craft_clientHello(version=i)
 				print(f"client_hello version {i} : \n {ch_pk[TLS].show()}")
-				sh_pk = sr1(ch_pk)
-				sh_pk.show()
-				if sh_pk.haslayer('TLS'):
-					print(f"srv_hello received \n {sh_pk[TLS].summary()}")
-					if sh_pk['TLS'].type == 22:
-						print(f"srv_hello: {sh_pk[TLS].show()}")
-						self.supportedProtocols.append(sh_pk['TLS'].version)
-					elif sh_pk['TLS'].type == 21:
-						if sh_pk['TLS'].msg[0].level == 2:
-							print(f"{sh_pk[TLS].version} not supported")
-							print(f"not supported version srv_hello: \n {sh_pk[TLS].show()}")
-							self.NotsupportedProtocols.append(sh_pk['TLS'].version)
-					else:
-						pass
+				results, unanswered = srp(ch_pk)
+				for p in results:
+					print(f"{p.summary()}")
+				# if sh_pk.haslayer('TLS'):
+				# 	print(f"srv_hello received \n {sh_pk[TLS].summary()}")
+				# 	if sh_pk['TLS'].type == 22:
+				# 		print(f"srv_hello: {sh_pk[TLS].show()}")
+				# 		self.supportedProtocols.append(sh_pk['TLS'].version)
+				# 	elif sh_pk['TLS'].type == 21:
+				# 		if sh_pk['TLS'].msg[0].level == 2:
+				# 			print(f"{sh_pk[TLS].version} not supported")
+				# 			print(f"not supported version srv_hello: \n {sh_pk[TLS].show()}")
+				# 			self.NotsupportedProtocols.append(sh_pk['TLS'].version)
+				# 	else:
+				# 		pass
 
 				# self.send(ch_pk)
 				time.sleep(3)
