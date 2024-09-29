@@ -79,6 +79,7 @@ class TLSscanner():
 		def scan(self):
 			# self.create_sniffer()
 			self.get_supportedProtocols()
+			self.get_supportedCipherSuites()
 			self.sock.close()
 
 		def connect(self):
@@ -156,13 +157,13 @@ class TLSscanner():
 			try:
 
 				if srv_hello.haslayer('TLS'):
-					print(f"srv_hello received \n {srv_hello[TLS].summary()}")
+					print(f"response with TLS record received")
 					if srv_hello['TLS'].type == 22:
-						print(f"srv_hello: {srv_hello[TLS].show()}")
+						print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
 						self.supportedProtocols.append(version)
 					elif srv_hello['TLS'].type == 21:
-						if srv_hello['TLS'].msg[0].level == 2:
-							print(f"{srv_hello[TLS].version} not supported")
+						if (srv_hello['TLS'].msg[0].level == 2 and srv_hello['TLS'].msg[0].descr == 50):
+							print(f"{version} not supported")
 							print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
 							self.NotsupportedProtocols.append(version)
 					else:
@@ -176,6 +177,10 @@ class TLSscanner():
 				for v in self.NotsupportedProtocols:
 					print(f"Not supported protocol: {v} \n")
 				"""
+
+		def get_supportedCipherSuites(self):
+
+			pass
 		
 		def craft_clientHello(self, version=771, ciphers=TLS12_CIPHERS, pubkeys=None, pskkxmodes=1):
 			
@@ -187,8 +192,9 @@ class TLSscanner():
 				elif version == 772:
 					ciphers = TLS13_CIPHERS
 				
+				
 			try:
-				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
+				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=self.sign_algs), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
@@ -296,7 +302,7 @@ class TLSscanner():
 
 
 if __name__ == "__main__":
-	scanner = TLSscanner(target="www.target.com")
+	scanner = TLSscanner(target="www.ikea.com")
 	scanner.scan()
 
 
