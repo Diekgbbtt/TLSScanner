@@ -135,16 +135,14 @@ class TLSscanner():
 		def get_supportedProtocols(self):
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
 			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x))
-			self.sniffer.start()
+			sniffer_t = self.sniffer.start()
+
 			for i in range(769, 773):
 				self.connect()
-
 				ch_pk = self.craft_clientHello(version=i)
 				print(f"client_hello version {i} : \n {ch_pk.show()}")
-				
 				self.send(ch_pk)
-				
-				self.sock.close()
+				sniffer_t.join()
 				time.sleep(3)
 			self.sniffer.stop()
 			for sp in self.supportedProtocols:
@@ -162,13 +160,17 @@ class TLSscanner():
 						print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
 						self.supportedProtocols.append(version)
 					elif srv_hello['TLS'].type == 21:
-						if (srv_hello['TLS'].msg[0].level == 2 and srv_hello['TLS'].msg[0].descr == 50):
+						if (srv_hello['TLS'].msg[0].level == 2 and srv_hello['TLS'].msg[0].descr == 70):
 							print(f"{version} not supported")
 							print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
 							self.NotsupportedProtocols.append(version)
 					else:
 						pass
-	
+
+					self.sock.close()
+				else:
+					pass
+
 			except:
 				print("not expected pkg received")
 				"""
@@ -302,7 +304,7 @@ class TLSscanner():
 
 
 if __name__ == "__main__":
-	scanner = TLSscanner(target="www.ikea.com")
+	scanner = TLSscanner(target="www.pediatricapta.org")
 	scanner.scan()
 
 
