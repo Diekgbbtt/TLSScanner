@@ -43,7 +43,7 @@ import socket, sys, os, ssl
 import logging
 import warnings
 
-from scapy.all import AsyncSniffer, SuperSocket, sr1, sr, srp
+from scapy.all import AsyncSniffer, SuperSocket, sniff
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
@@ -139,23 +139,24 @@ class TLSscanner():
 			for i in range(769, 773):
 				ch_pk = self.craft_clientHello(version=i)
 				print(f"client_hello version {i} : \n {ch_pk.show()}")
-				results, unanswered = sr(ch_pk)
-				for p in results:
-					print(f"{p}")
-				# if sh_pk.haslayer('TLS'):
-				# 	print(f"srv_hello received \n {sh_pk[TLS].summary()}")
-				# 	if sh_pk['TLS'].type == 22:
-				# 		print(f"srv_hello: {sh_pk[TLS].show()}")
-				# 		self.supportedProtocols.append(sh_pk['TLS'].version)
-				# 	elif sh_pk['TLS'].type == 21:
-				# 		if sh_pk['TLS'].msg[0].level == 2:
-				# 			print(f"{sh_pk[TLS].version} not supported")
-				# 			print(f"not supported version srv_hello: \n {sh_pk[TLS].show()}")
-				# 			self.NotsupportedProtocols.append(sh_pk['TLS'].version)
+				self.send(ch_pk)
+				sh_pk = sniff(count=1, iface="en0", store=False, filter=f"src host {self.targetIP}")
+				print(f"{sh_pk}")
+				# sh_pk[0].show()
+				# if sh_pk[0].haslayer('TLS'):
+				# 	print(f"srv_hello received \n {sh_pk[0][TLS].summary()}")
+				# 	if sh_pk[0]['TLS'].type == 22:
+				# 		print(f"srv_hello: {sh_pk[0][TLS].show()}")
+				# 		self.supportedProtocols.append(sh_pk[0]['TLS'].version)
+				# 	elif sh_pk[0]['TLS'].type == 21:
+				# 		if sh_pk[0]['TLS'].msg[0].level == 2:
+				# 			print(f"{sh_pk[0][TLS].version} not supported")
+				# 			print(f"not supported version srv_hello: \n {sh_pk[0][TLS].show()}")
+				# 			self.NotsupportedProtocols.append(sh_pk[0]['TLS'].version)
 				# 	else:
 				# 		pass
-
-				# self.send(ch_pk)
+				self.sock.close()
+				self.connect()
 				time.sleep(3)
 			# self.sniffer.stop()
 			for sp in self.supportedProtocols:
@@ -201,11 +202,11 @@ class TLSscanner():
 					ciphers = TLS13_CIPHERS
 				
 			try:
-				ch_pk = (IP(dst=self.targetIP) / TCP(dport=443) / TLS(version=version, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
+				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=self.sign_algs), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
-										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[])])]))
+										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[])])])
 			except scapy.error.PacketError as e:
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
 				print(f"Packet creation error: {e}")
