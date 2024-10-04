@@ -100,6 +100,7 @@ class TLSscanner():
 
 		def getIPv4(self):
 			self.targetIP= socket.gethostbyname(self.target)
+			print(self.targetIP)
 
 
 
@@ -128,21 +129,21 @@ class TLSscanner():
 		def create_sniffer(self, prn=None):
 			if prn is None:
 				prn = self.get_tlsInfo
-			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, filter=f"src host {self.target}")
+			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=f"src host {self.target}", stop_filter=lambda x: x.haslayer('TLS') or (x.haslayer('TCP') and x[TCP].flags == 20))
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
 		def get_supportedProtocols(self):
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
 			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x))
-			self.sniffer.start()
 
 			for i in range(769, 773):
 				self.connect()
+				self.sniffer.start()
 				ch_pk = self.craft_clientHello(version=i)
 				print(f"client_hello version {i} : \n {ch_pk.show()}")
 				self.send(ch_pk)
+				self.sniffer.join()
 				time.sleep(3)
-			self.sniffer.stop()
 			for sp in self.supportedProtocols:
 					print(f"{sp} supported")
 			for sp in self.NotsupportedProtocols:
@@ -308,7 +309,7 @@ class TLSscanner():
 
 
 if __name__ == "__main__":
-	scanner = TLSscanner(target="www.pediatricapta.org")
+	scanner = TLSscanner(target="www.ikea.com")
 	scanner.scan()
 
 
