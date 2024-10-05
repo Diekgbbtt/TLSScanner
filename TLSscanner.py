@@ -43,7 +43,7 @@ import socket, sys, os, ssl
 import logging
 import warnings
 
-from scapy.all import AsyncSniffer, SuperSocket, sniff
+from scapy.all import AsyncSniffer, SuperSocket
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
@@ -52,11 +52,17 @@ from scapy.layers.inet import * # IP, TCP
 from ecdsa import NIST192p, NIST224p, NIST256p, NIST384p, NIST521p, SECP256k1
 from ecdsa.keys import SigningKey
 """
-
-TLS12_CIPHERS = [4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,103,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
+TLS12_CIPHERS = [52243, 52245, 4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
 TLS13_CIPHERS = [4869, 4868, 4867, 4866, 4865]
-TLS10_CIPHERS = TLS12_CIPHERS
-TLS11_CIPHERS = TLS12_CIPHERS
+TLS10_CIPHERS = [5, 4, 10, 60, 61, 22, 51, 107, 49169, 49170, 49171, 49172]
+TLS11_CIPHERS = [60, 61, 51, 107, 49169, 49171, 49172]
+ciphers = {
+		769: TLS10_CIPHERS,
+		770: TLS11_CIPHERS,
+		771: TLS12_CIPHERS,
+		772: TLS13_CIPHERS
+}
+
 SUPP_CV_GROUPS = [24, 23, 22, 21, 29] # da aggiungere X25519Kyber768Draft00
 SUPP_CV_GROUPS_test  = [24, 23, 29] 
 SIGN_ALGS = [1027,1283,1539,2055,2053,2054,1025,1281,1537]
@@ -172,7 +178,7 @@ class TLSscanner():
 					# print(f"{srv_hello[TCP].flags}")
 					# srv_hello.show()
 					self.NotsupportedProtocols.append(version)
-				
+					self.sock.close()
 				else:
 					pass
 	
@@ -186,22 +192,53 @@ class TLSscanner():
 				"""
 
 		def get_supportedCipherSuites(self):
-
-			pass
+			# self.sniffer.kwargs['stop_filter'] = lambda x: x.haslayer('TLS') or (x.haslayer('TCP') and x[TCP].flags == 20)
+			self.sniffer.kwargs['prn'] = lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x)
+			self.ciphers_info = {}
+			for sp in self.supportedProtocols:
+				self.ciphers_info[sp] = {"supportedCiphers": [], "notsupportedCiphers": []}
+			for sp in self.ciphers_info:
+				for cipher in ciphers[sp]:
+					self.connect()
+					self.sniffer.start()
+					ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
+					print(f"client_hello version {sp} : \n {ch_pk.show()}")
+					self.send(ch_pk)
+					self.sniffer.join()
+					time.sleep(3)
+			for tls_version in self.ciphers_info:
+				for cipher in self.ciphers_info[tls_version]["supportedCiphers"]:
+					print(f"cipher {cipher} supported")
+				for cipher in self.ciphers_info[tls_version]["notsupportedCiphers"]:
+					print(f"cipher {cipher} not supported")
 		
-		def craft_clientHello(self, version=771, ciphers=TLS12_CIPHERS, pubkeys=None, pskkxmodes=1):
-			
-			if version != 771:
-				if version == 769:
-					ciphers = TLS10_CIPHERS
-				elif version == 770:
-					ciphers = TLS11_CIPHERS
-				elif version == 772:
-					ciphers = TLS13_CIPHERS
-				
+		def check_cipher(self, cipher, version, srv_hello):
+			try:
+				if srv_hello.haslayer('TLS'):
+					print(f"response with TLS record received")
+					if srv_hello['TLS'].type == 22:
+						print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
+						self.ciphers_info[version]["supportedCiphers"].append(cipher)
+					elif srv_hello['TLS'].type == 21:
+						if (srv_hello['TLS'].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
+							print(f"{cipher} not supported")
+							print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
+							self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
+					else:
+						pass
+			except:
+				print("not expected pkg received")
+				"""
+				for v in self.supportedProtocols:
+					print(f"Supported protocol: {v} \n")
+				for v in self.NotsupportedProtocols:
+					print(f"Not supported protocol: {v} \n")
+				"""
+		
+		def craft_clientHello(self, version=771, cipher=None, pubkeys=None, pskkxmodes=1):
 				
 			try:
-				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=ciphers, random_bytes=os.urandom(32) , ext=[ \
+				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32) , ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=self.sign_algs), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
