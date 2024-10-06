@@ -153,7 +153,6 @@ class TLSscanner():
 				print(f"client_hello version {i} : \n {ch_pk.show()}")
 				self.send(ch_pk)
 				self.sniffer.join()
-				time.sleep(3)
 			for sp in self.supportedProtocols:
 					print(f"{sp} supported")
 			for sp in self.NotsupportedProtocols:
@@ -204,6 +203,7 @@ class TLSscanner():
 					thread = threading.Thread(target=self.check_cipher_thread, args=(sp, cipher))
 					threads.append(thread)
 					thread.start()
+					time.sleep(0.01)
 					"""
 					self.connect()
 					self.sniffer.start()
@@ -213,7 +213,7 @@ class TLSscanner():
 					self.sniffer.join()
 					time.sleep(3)
 					"""
-				time.sleep(6)
+				time.sleep(2)
 
 			for thread in threads:
 				thread.join()
@@ -232,8 +232,8 @@ class TLSscanner():
 			sock= SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM)
 			# sock.ins.bind(('127.0.0.1', sock.ins.getsockname()[1]))
 			sock.ins.connect((self.targetIP, self.port))
-			
-			sniffer = AsyncSniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=3, stop_filter=lambda x: (x.haslayer('TLS') or (x.haslayer('TCP') and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+
+			sniffer = AsyncSniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 			#self.create_sniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x))
 			sniffer.start()
 			ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
@@ -242,7 +242,6 @@ class TLSscanner():
 			sock.send(bytes(ch_pk))
 			sniffer.join()
 			sock.close()
-			time.sleep(3)
 
 
 		def check_cipher(self, cipher, version, srv_hello):
