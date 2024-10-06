@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import asyncio
 from TLSscanner import TLSscanner
 
 
@@ -14,7 +15,7 @@ class test_TLSscanner():
         self.scanner.get_supportedProtocols()
 
     def test_cipher_suites(self):    
-        self.scanner.get_supportedCipherSuites()
+        asyncio.run(self.scanner.get_supportedCipherSuites())
  
     
  

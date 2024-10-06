@@ -43,6 +43,7 @@ import socket, sys, os, ssl
 import logging
 import warnings
 import threading
+import asyncio
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.layers.tls.all import *
@@ -191,32 +192,20 @@ class TLSscanner():
 				print("not expected pkg received")
 				return None
 
-		def get_supportedCipherSuites(self):
+		async def get_supportedCipherSuites(self):
 			# self.sniffer.kwargs['stop_filter'] = lambda x: x.haslayer('TLS') or (x.haslayer('TCP') and x[TCP].flags == 20)
 			# self.sniffer.kwargs['prn'] = lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x)
-			threads = []
+			tasks = []
 			self.ciphers_info = {}
 			for sp in self.supportedProtocols:
 				self.ciphers_info[sp] = {"supportedCiphers": [], "notsupportedCiphers": []}
 			for sp in self.ciphers_info:
 				for cipher in ciphers[sp]:
-					thread = threading.Thread(target=self.check_cipher_thread, args=(sp, cipher))
-					threads.append(thread)
-					thread.start()
-					time.sleep(0.01)
-					"""
-					self.connect()
-					self.sniffer.start()
-					ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
-					print(f"client_hello version {sp} : \n {ch_pk.show()}")
-					self.send(ch_pk)
-					self.sniffer.join()
-					time.sleep(3)
-					"""
+					task = self.check_cipher_support(sp=sp, cipher=cipher)
+					tasks.append(task)
+				await asyncio.gather(*tasks)
+				tasks.clear()
 				time.sleep(2)
-
-			for thread in threads:
-				thread.join()
 			
 			for tls_version in self.ciphers_info:
 				print(f"Ciphers information for TLS version {tls_version} : \n")
@@ -226,6 +215,23 @@ class TLSscanner():
 					print(f"cipher {cipher} not supported")
 				print("\n\n")
 		
+
+		async def check_cipher_support(self, sp, cipher):
+			
+			sock= SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM)
+			# sock.ins.bind(('127.0.0.1', sock.ins.getsockname()[1]))
+			sock.ins.connect((self.targetIP, self.port))
+
+			sniffer = AsyncSniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+			#self.create_sniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x))
+			sniffer.start()
+			ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
+			# print(f"client_hello version {sp} : \n {ch_pk.show()}")
+			# self.send(ch_pk)
+			sock.send(bytes(ch_pk))
+			sniffer.join()
+			sock.close()
+			
 
 		def check_cipher_thread(self, sp, cipher):
 			# self.connect()
