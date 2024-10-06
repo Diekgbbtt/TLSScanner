@@ -21,7 +21,7 @@ class test_TLSscanner():
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="www.ikea.com")
+    scanner = test_TLSscanner(target="www.youtube.com")
     scanner.test_protocol_versions()
     scanner.test_cipher_suites()
 
