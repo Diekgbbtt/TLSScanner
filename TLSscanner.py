@@ -42,6 +42,7 @@ import socket, sys, os, ssl
 
 import logging
 import warnings
+import threading
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.layers.tls.all import *
@@ -103,11 +104,14 @@ class TLSscanner():
 				self.sock.ins.bind(self.sourceAddress)
 			
 			return None
-
+		def close_socket(self):
+			if self.sock:
+				self.sock.close() 
+			return None
+		
 		def getIPv4(self):
 			self.targetIP= socket.gethostbyname(self.target)
 			print(self.targetIP)
-
 
 
 		def check_reach(self):
@@ -181,24 +185,26 @@ class TLSscanner():
 					self.sock.close()
 				else:
 					pass
+				
+				return None
 	
 			except:
 				print("not expected pkg received")
-				"""
-				for v in self.supportedProtocols:
-					print(f"Supported protocol: {v} \n")
-				for v in self.NotsupportedProtocols:
-					print(f"Not supported protocol: {v} \n")
-				"""
+				return None
 
 		def get_supportedCipherSuites(self):
 			# self.sniffer.kwargs['stop_filter'] = lambda x: x.haslayer('TLS') or (x.haslayer('TCP') and x[TCP].flags == 20)
-			self.sniffer.kwargs['prn'] = lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x)
+			# self.sniffer.kwargs['prn'] = lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x)
+			threads = []
 			self.ciphers_info = {}
 			for sp in self.supportedProtocols:
 				self.ciphers_info[sp] = {"supportedCiphers": [], "notsupportedCiphers": []}
 			for sp in self.ciphers_info:
 				for cipher in ciphers[sp]:
+					thread = threading.Thread(target=self.check_cipher_thread, args=(sp, cipher))
+					threads.append(thread)
+					thread.start()
+					"""
 					self.connect()
 					self.sniffer.start()
 					ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
@@ -206,12 +212,39 @@ class TLSscanner():
 					self.send(ch_pk)
 					self.sniffer.join()
 					time.sleep(3)
+					"""
+				time.sleep(6)
+
+			for thread in threads:
+				thread.join()
+			
 			for tls_version in self.ciphers_info:
+				print(f"Ciphers information for TLS version {tls_version} : \n")
 				for cipher in self.ciphers_info[tls_version]["supportedCiphers"]:
 					print(f"cipher {cipher} supported")
 				for cipher in self.ciphers_info[tls_version]["notsupportedCiphers"]:
 					print(f"cipher {cipher} not supported")
+				print("\n\n")
 		
+
+		def check_cipher_thread(self, sp, cipher):
+			# self.connect()
+			sock= SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM)
+			# sock.ins.bind(('127.0.0.1', sock.ins.getsockname()[1]))
+			sock.ins.connect((self.targetIP, self.port))
+			
+			sniffer = AsyncSniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=3, stop_filter=lambda x: (x.haslayer('TLS') or (x.haslayer('TCP') and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+			#self.create_sniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x))
+			sniffer.start()
+			ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
+			# print(f"client_hello version {sp} : \n {ch_pk.show()}")
+			# self.send(ch_pk)
+			sock.send(bytes(ch_pk))
+			sniffer.join()
+			sock.close()
+			time.sleep(3)
+
+
 		def check_cipher(self, cipher, version, srv_hello):
 			try:
 				if srv_hello.haslayer('TLS'):
@@ -226,14 +259,23 @@ class TLSscanner():
 							self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
 					else:
 						pass
+					self.close_socket()
+				
+				elif(srv_hello.haslayer('TCP') and srv_hello[TCP].flags == 20):
+					# print("not TLS pkt received \n")
+					# print(f"{srv_hello[TCP].flags}")
+					# srv_hello.show()
+					self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
+					self.close_socket()
+				else:
+					self.close_socket()
+					pass
+				return None
+			
 			except:
 				print("not expected pkg received")
-				"""
-				for v in self.supportedProtocols:
-					print(f"Supported protocol: {v} \n")
-				for v in self.NotsupportedProtocols:
-					print(f"Not supported protocol: {v} \n")
-				"""
+				return None
+
 		
 		def craft_clientHello(self, version=771, cipher=None, pubkeys=None, pskkxmodes=1):
 				

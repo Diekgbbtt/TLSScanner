@@ -6,17 +6,23 @@ from TLSscanner import TLSscanner
 
 
 class test_TLSscanner():
-        
-    def test_cipher_suites():    
-        scanner = TLSscanner(target="www.ikea.com")
 
-        scanner.create_sniffer()
-        scanner.supportedProtocols = [771, 772]
-        scanner.get_supportedCipherSuites()
-        scanner.sock.close()
+    def __init__(self, target):
+        self.scanner = TLSscanner(target=target)
 
+    def test_protocol_versions(self):
+        self.scanner.get_supportedProtocols()
+
+    def test_cipher_suites(self):    
+        self.scanner.get_supportedCipherSuites()
+ 
+    
+ 
 if __name__ == "__main__":
-    test_TLSscanner.test_cipher_suites()
+
+    scanner = test_TLSscanner(target="www.ikea.com")
+    scanner.test_protocol_versions()
+    scanner.test_cipher_suites()
 
 
 
