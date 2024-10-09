@@ -13,6 +13,7 @@ class test_TLSscanner():
 
     def test_protocol_versions(self):
         self.scanner.get_supportedProtocols()
+        print(self.scanner.targetIP)
 
     def test_cipher_suites(self):    
         asyncio.run(self.scanner.get_supportedCipherSuites())
@@ -27,9 +28,7 @@ if __name__ == "__main__":
 
     scanner = test_TLSscanner(target="www.youtube.com")
     scanner.test_protocol_versions()
-    # scanner.test_cipher_suites()
-    scanner.test_curves()
-    scanner.test_algorithms()
+
 
 
 
