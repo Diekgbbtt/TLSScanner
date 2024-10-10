@@ -85,6 +85,9 @@ import warnings
 import asyncio
 
 from scapy.all import AsyncSniffer, SuperSocket
+from scapy.asn1packet import *
+from scapy.asn1fields import *
+from scapy.layers.x509 import *
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
@@ -176,21 +179,21 @@ class TLSscanner():
 		def get_tlsInfo(self, packet):
 			return None
 		
-		def create_sniffer(self, prn=None):
+		def create_sniffer(self, prn=None, stop_filter=None):
 			if prn is None:
 				prn = self.get_tlsInfo
-			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=f"src host {self.target}", stop_filter=lambda x: x.haslayer(TLS) or (x.haslayer(TCP) and x[TCP].flags == 20))
+			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=f"src host {self.target}", stop_filter= (stop_filter if stop_filter else lambda x: x.haslayer(TLS)))
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
 		def get_supportedProtocols(self):
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
-			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x))
+			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 
 			for i in range(769, 773):
 				self.connect()
-				self.sniffer.start()
 				ch_pk = self.craft_clientHello(version=i)
 				# print(f"client_hello version {i} : \n {ch_pk.show()}")
+				self.sniffer.start()
 				self.send(ch_pk)
 				self.sniffer.join()
 			for sp in self.supportedProtocols:
@@ -201,14 +204,13 @@ class TLSscanner():
 	
 		def check_protos(self, version, srv_hello):
 			try:
-
 				if srv_hello.haslayer(TLS):
 					# print(f"response with TLS record received")
-					if srv_hello['TLS'].type == 22:
-						# print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
+					if srv_hello[TLS].type == 22:
+						print(f"srv hello received: \n {srv_hello[TLS].show()}")
 						self.supportedProtocols.append(version)
-					elif srv_hello['TLS'].type == 21:
-						if (srv_hello['TLS'].msg[0].level == 2 and srv_hello['TLS'].msg[0].descr == 70):
+					elif srv_hello[TLS].type == 21:
+						if (srv_hello[TLS].msg[0].level == 2 and srv_hello[TLS].msg[0].descr == 70):
 							# print(f"{version} not supported")
 							# print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
 							self.NotsupportedProtocols.append(version)
@@ -402,7 +404,7 @@ class TLSscanner():
 				if srv_hello.haslayer(TLS):
 					print(f"response with TLS record received")
 					if srv_hello[TLS].type == 22:
-						print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
+						# print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
 						self.supportedCurves.append(curve)
 					elif srv_hello[TLS].type == 21:
 						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
@@ -427,7 +429,61 @@ class TLSscanner():
 			except:
 				print("not expected pkg received")
 				return None
+		
+		def get_certificate(self):
+
+			self.create_sniffer(prn=lambda x: self.fetch_certficate(x), stop_filter=lambda x: (x.haslayer(TLS) and any(isinstance(msg, TLSCertificate) for msg in x[TLS].msg)))
+			ch_pk = self.craft_clientHello(version=771)
+			self.connect()
+			self.sniffer.start()
+			self.send(bytes(ch_pk))
+			self.sniffer.join()
+			time.sleep(1)
+			self.get_certificate_info()
+
+
+		def fetch_certficate(self, srv_hello):
+			try:
+				if srv_hello.haslayer(TLS):
+					# print(f"response with TLS record received")
+					if srv_hello[TLS].type == 22:
+						# print(f"srv hello received: \n {srv_hello[TLS].show()}")
+						if srv_hello[TLS].msg:
+							for msg in srv_hello[TLS].msg:
+								if isinstance(msg, TLSCertificate):
+									print(f"certificate received: \n {msg.show()} \n {msg.certs[0]}")
+									self.srv_certificate = Cert(msg.certs[0][1].der)
+									print(f"certificate stored: \n {self.srv_certificate.tbsCertificate}")
+					elif srv_hello[TLS].type == 21:
+						if (srv_hello[TLS].msg[0].level == 2 and srv_hello[TLS].msg[0].descr == 70):
+							# print(f"{version} not supported")
+							# print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
+							print("not proper client hello sent")
+					else:
+						pass
+
+					self.sock.close()
+				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
+					# print("not TLS pkt received \n")
+					# print(f"{srv_hello[TCP].flags}")
+					# srv_hello.show()
+					print("not proper client hello sent")
+					self.sock.close()
+				else:
+					pass
+				
+				return None
+	
+			except:
+				print("not expected pkg received")
+				return None
+
 			
+		def get_certificate_info(self):
+			
+			pass
+		
+
 
 		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1):
 				

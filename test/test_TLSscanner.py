@@ -23,11 +23,15 @@ class test_TLSscanner():
     
     def test_algorithms(self):
         asyncio.run(self.scanner.get_supportedSignalgs())
+
+    def test_get_certificate(self):
+        self.scanner.get_certificate()
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="www.youtube.com")
+    scanner = test_TLSscanner(target="www.pediatricapta.org")
     scanner.test_protocol_versions()
+    scanner.test_get_certificate()
 
 
 
