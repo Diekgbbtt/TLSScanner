@@ -29,7 +29,7 @@ class test_TLSscanner():
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="www.pediatricapta.org")
+    scanner = test_TLSscanner(target="www.alibaba.com")
     scanner.test_protocol_versions()
     scanner.test_get_certificate()
 

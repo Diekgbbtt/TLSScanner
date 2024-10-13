@@ -130,6 +130,7 @@ from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
 from scapy.asn1fields import *
 from scapy.layers.x509 import *
+from scapy.layers.tls.cert import *
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
@@ -475,7 +476,8 @@ class TLSscanner():
 		def get_certificate(self):
 
 			self.create_sniffer(prn=lambda x: self.fetch_certficate(x), stop_filter=lambda x: (x.haslayer(TLS) and any(isinstance(msg, TLSCertificate) for msg in x[TLS].msg)))
-			ch_pk = self.craft_clientHello(version=771)
+			ocsp_status_req = OCSPStatusRequest(respid=[], reqext=None)
+			ch_pk = self.craft_clientHello(version=771, ocsp_status_req=ocsp_status_req)
 			self.connect()
 			self.sniffer.start()
 			self.send(bytes(ch_pk))
@@ -489,14 +491,14 @@ class TLSscanner():
 				if srv_hello.haslayer(TLS):
 					# print(f"response with TLS record received")
 					if srv_hello[TLS].type == 22:
-						# print(f"srv hello received: \n {srv_hello[TLS].show()}")
+						print(f"srv hello received: \n {srv_hello[TLS].show()}")
 						if srv_hello[TLS].msg:
 							for msg in srv_hello[TLS].msg:
 								if isinstance(msg, TLSCertificate):
 									print(f"certificate received: \n {msg.show()} \n {msg.certs[0]}")
 									self.srv_certificate = Cert(msg.certs[0][1].der)
-									self.srv_certificate.verify()
-									print(f"certificate stored: \n {dir(self.srv_certificate)} \n  {dir(self.srv_certificate.tbsCertificate)} \n  {dir(self.srv_certificate.x509Cert)}")
+									print(f"{self.srv_certificate.tbsCertificate.subject}")
+									# print(f"certificate stored: \n {dir(self.srv_certificate)} \n  {dir(self.srv_certificate.tbsCertificate)} \n  {dir(self.srv_certificate.x509Cert)}")
 					elif srv_hello[TLS].type == 21:
 						if (srv_hello[TLS].msg[0].level == 2 and srv_hello[TLS].msg[0].descr == 70):
 							# print(f"{version} not supported")
@@ -528,14 +530,14 @@ class TLSscanner():
 		
 
 
-		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1):
+		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=OCSPStatusRequest()):
 				
 			try:
 				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32) , ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=(sign_algs if sign_algs else self.sign_algs)), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
-										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[])])])
+										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[]), TLS_Ext_CSR(req=ocsp_status_req, stype=1)])])
 			except scapy.error.PacketError as e:
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
 				print(f"Packet creation error: {e}")
