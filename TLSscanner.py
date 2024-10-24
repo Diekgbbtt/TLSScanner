@@ -117,6 +117,70 @@ scan can be set on different modes
 		self._check_session_ticket()
 		self._check_hsts()
 
+		
+
+KNOWN COMMON TLS VULNERABILITIES:
+
+1. POODLE (Padding Oracle On Downgraded Legacy Encryption)
+Affected Protocol: SSL 3.0
+Description: This vulnerability allows an attacker to perform a man-in-the-middle (MITM) attack and decrypt data transmitted between the client and server by exploiting SSL 3.0's fallback mechanism.
+Mitigation: Disable SSL 3.0 and enforce the use of more secure TLS versions.
+2. Heartbleed (CVE-2014-0160)
+Affected Protocol: OpenSSL (TLS Heartbeat Extension)
+Description: Heartbleed is a buffer over-read vulnerability that allows attackers to read sensitive information (such as private keys and session cookies) from a server's memory.
+Mitigation: Update OpenSSL to a patched version (1.0.1g or later).
+3. BEAST (Browser Exploit Against SSL/TLS)
+Affected Protocol: TLS 1.0
+Description: BEAST is a cipher-block chaining (CBC) vulnerability that enables an attacker to decrypt HTTPS requests by injecting code in a man-in-the-middle attack.
+Mitigation: Upgrade to TLS 1.1 or TLS 1.2, or use a different cipher suite (such as RC4).
+4. CRIME (Compression Ratio Info-leak Made Easy)
+Affected Protocol: TLS (with compression enabled)
+Description: CRIME exploits TLS-level data compression (DEFLATE) to leak information from encrypted connections by comparing compressed sizes.
+Mitigation: Disable TLS compression.
+5. BREACH (Browser Reconnaissance and Exfiltration via Adaptive Compression of Hypertext)
+Affected Protocol: TLS (with HTTP compression)
+Description: BREACH attacks the HTTP compression used over TLS to extract secrets from HTTPS responses.
+Mitigation: Disable HTTP compression, use random padding, or employ techniques like separating secrets from user input.
+6. FREAK (Factoring RSA Export Keys)
+Affected Protocol: TLS
+Description: FREAK exploits a vulnerability that forces servers to downgrade RSA keys to export-grade (weaker) encryption, allowing attackers to decrypt communications.
+Mitigation: Ensure proper configuration by disabling export cipher suites.
+7. Logjam
+Affected Protocol: TLS (with Diffie-Hellman key exchange)
+Description: Logjam exploits weaknesses in the Diffie-Hellman key exchange, allowing an attacker to downgrade the connection to use weaker, export-grade parameters.
+Mitigation: Disable support for weak Diffie-Hellman groups and enforce stronger cryptographic settings.
+8. DROWN (Decrypting RSA with Obsolete and Weakened eNcryption)
+Affected Protocol: SSLv2 and some TLS servers
+Description: DROWN allows attackers to decrypt TLS sessions by exploiting vulnerabilities in servers that still support SSLv2, even if TLS is being used for the actual session.
+Mitigation: Disable SSLv2 and ensure all private keys are not shared between SSLv2 and TLS services.
+9. Sweet32
+Affected Protocol: TLS (with 64-bit block ciphers like 3DES)
+Description: Sweet32 exploits the use of 64-bit block ciphers, allowing attackers to recover plaintext from encrypted data through a birthday attack.
+Mitigation: Use modern 128-bit or higher block ciphers (such as AES).
+10. ROBOT (Return Of Bleichenbacher’s Oracle Threat)
+Affected Protocol: TLS (using RSA encryption)
+Description: ROBOT is a vulnerability in RSA encryption used in TLS, allowing attackers to recover the plaintext of encrypted messages by sending specially crafted queries.
+Mitigation: Apply software patches and disable RSA key exchange in favor of more secure alternatives like Diffie-Hellman or elliptic-curve cryptography (ECC).
+11. Ticketbleed (CVE-2016-9244)
+Affected Protocol: TLS (in certain implementations like F5 BIG-IP)
+Description: Ticketbleed exploits session tickets in TLS, leaking up to 31 bytes of uninitialized memory, potentially exposing sensitive information.
+Mitigation: Update to patched versions of affected software.
+12. Raccoon Attack (CVE-2020-1968)
+Affected Protocol: TLS (with Diffie-Hellman key exchange)
+Description: The Raccoon attack is a timing attack on the TLS handshake process when using Diffie-Hellman key exchange, allowing attackers to recover parts of the session key.
+Mitigation: Ensure that timing variations in cryptographic operations are reduced and move to safer key exchange mechanisms like elliptic-curve Diffie-Hellman (ECDHE).
+13. Zombie POODLE and GOLDENDOODLE
+Affected Protocol: TLS 1.2 (certain implementations)
+Description: Variants of the POODLE attack that affect certain modern TLS implementations. These attacks can lead to the decryption of data.
+Mitigation: Use the latest patched TLS libraries and avoid vulnerable cipher suites.
+14. ALPACA (Application Layer Protocol Confusion Attack)
+Affected Protocol: TLS (multi-protocol servers)
+Description: ALPACA leverages cross-protocol attacks by redirecting traffic intended for one protocol (e.g., HTTPS) to another protocol (e.g., FTPS), potentially leading to session hijacking.
+Mitigation: Implement strict protocol-specific validation, isolate services, and ensure SNI (Server Name Indication) is properly used.
+15. TLS 1.3 Downgrade Attack
+Affected Protocol: TLS 1.3
+Description: Attackers can force a downgrade from TLS 1.3 to older, less secure versions like TLS 1.2, which are susceptible to attacks like BEAST or CRIME.
+Mitigation: Ensure strict support for TLS 1.3 and use downgrade-resistant mechanisms like the downgrade sentinel in modern libraries.
 """
 
 
@@ -406,8 +470,8 @@ class TLSscanner():
 					pass
 				return None
 			
-			except:
-				print("not expected pkg received")
+			except Exception as e:
+				print(f"exception during packet dissection occurred: {e}")
 				return None
 			
 		
@@ -469,75 +533,120 @@ class TLSscanner():
 					pass
 				return None
 			
-			except:
-				print("not expected pkg received")
+			except Exception as e:
+				print(f"exception during packet dissection occurred: {e}")
 				return None
 		
 		def get_certificate(self):
 
-			self.create_sniffer(prn=lambda x: self.fetch_certficate(x), stop_filter=lambda x: (x.haslayer(TLS) and any(isinstance(msg, TLSCertificate) for msg in x[TLS].msg)))
+			self.create_sniffer(prn=lambda x: self.fetch_certficate(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
 			ocsp_status_req = OCSPStatusRequest(respid=[], reqext=None)
 			ch_pk = self.craft_clientHello(version=771, ocsp_status_req=ocsp_status_req)
 			self.connect()
 			self.sniffer.start()
 			self.send(bytes(ch_pk))
 			self.sniffer.join()
-			time.sleep(1)
-			self.get_certificate_info()
+			time.sleep(5)
+			self.sock.close()
 
 
 		def fetch_certficate(self, srv_hello):
 			try:
-				if srv_hello.haslayer(TLS):
-					# print(f"response with TLS record received")
-					if srv_hello[TLS].type == 22:
-						print(f"srv hello received: \n {srv_hello[TLS].show()}")
-						if srv_hello[TLS].msg:
-							for msg in srv_hello[TLS].msg:
-								if isinstance(msg, TLSCertificate):
-									print(f"certificate received: \n {msg.show()} \n {msg.certs[0]}")
-									self.srv_certificate = Cert(msg.certs[0][1].der)
-									print(f"{self.srv_certificate.tbsCertificate.subject}")
-									# print(f"certificate stored: \n {dir(self.srv_certificate)} \n  {dir(self.srv_certificate.tbsCertificate)} \n  {dir(self.srv_certificate.x509Cert)}")
-					elif srv_hello[TLS].type == 21:
-						if (srv_hello[TLS].msg[0].level == 2 and srv_hello[TLS].msg[0].descr == 70):
-							# print(f"{version} not supported")
-							# print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
-							print("not proper client hello sent")
+				if srv_hello.haslayer(TLSCertificate):
+					self.srv_certificate = Cert(srv_hello[TLSCertificate].certs[0][1].der)
+				if srv_hello.haslayer(TLSCertificateStatus):
+					self.srv_certificate.valid_cert = srv_hello.haslayer(OCSP_GoodInfo) # (False if isinstance(srv_hello[OCSP_CertStatus].cert_status, OCSP_GoodInfo) else True)
+					if self.srv_certificate.valid_cert:
+						self.srv_certificate.revision_date = srv_hello[OCSP_SingleResponse].thisUpdate.datetime
+					elif srv_hello.haslayer(OCSP_RevokedInfo):
+						self.srv_certificate.valid_cert = False
+						self.srv_certificate.valid_cert.revocation_date = srv_hello[OCSP_RevokedInfo].revocationTime
+						self.srv_certificate.valid_cert.revocation_reason = srv_hello[OCSP_RevokedInfo].revocationReason
 					else:
-						pass
+						self.srv_certificate.valid_cert = "Unknown"
 
-					self.sock.close()
 				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
 					# print("not TLS pkt received \n")
 					# print(f"{srv_hello[TCP].flags}")
 					# srv_hello.show()
 					print("not proper client hello sent")
-					self.sock.close()
 				else:
 					pass
 				
 				return None
 	
-			except:
-				print("not expected pkg received")
+			except Exception as e:
+				print(f"exception during packet dissection occurred: {e}")
 				return None
 
-			
-		def get_certificate_info(self):
-			
+
+		def check_secure_renegotiation(self):
+			self.create_sniffer(prn=lambda x: self.get_session_id_sv_data(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
+			ch_pk = self.craft_clientHello(version=771, pskkxmodes=1, renego_info=True)
+			self.connect()
+			self.sniffer.start()
+			self.send(bytes(ch_pk))
+			self.sniffer.join()
+			time.sleep(5)
+			self.sock.close()
+			"""
+			self.create_sniffer(prn=lambda x: self.is_renegotiation_secure(x), stop_filter=lambda x: x.haslayer(TLSClientHello))
+			renego_pk = TLS(version=771, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers[771], random_bytes=os.urandom(32), sid=self.session_id, ext=[TLS_Ext_RenegotiationInfo(renegotiated_connection=self.client_verifiy_data)])])
+			self.sniffer.start()
+			self.send(bytes(ch_pk))
+			self.sniffer.join()
+			time.sleep(1)
+			self.sock.close()
+			"""
+
+
+		def get_session_id_sv_data(self, srv_hello):
+
+			try:
+				if srv_hello.haslayer(TLSServerHello):
+						print(f"srv_hello received: \n {srv_hello[TLS].show()}")
+						self.session_id = srv_hello[TLS].msg[0].sid
+						print(f"session id: {self.session_id}")
+				elif srv_hello.haslayer(TLSServerHelloDone):
+						print(f"srv_hello_done received: \n {srv_hello[TLS].show()}")
+						# print(f"client verify data: {self.client_verifiy_data}")
+						"""
+						client key exchange and client change cipher spec
+						"""
+						"""
+						The verification data is built from a hash of all handshake messages and verifies the integrity of the handshake process.
+						"""
+						kx_pk = TLS(version=771, type=22, msg=[TLSClientKeyExchange(key_exchange=TLS_KeyExchange_RSA(rsa_pub_key=self.srv_certificate.public_key), verify_data=self.client_verifiy_data)])
+						css_pk = TLS(version=771, type=22, msg=[TLSChangeCipherSpec()])
+						cf_pk = TLS(version=771, type=22, msg=[TLSFinished(vdata=b'')])])
+						self.send(bytes())
+				elif srv_hello.haslayer(TLSAlert):
+						print("not proper client hello sent")
+				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
+						print("likely not proper client hello sent - connection terminated \n")
+				else:
+					pass
+
+			except Exception as e:
+				print(f"exception during packet dissection occurred: {e}")
+				return None
+
+		def is_renegotiation_secure(self, srv_hello):
 			pass
-		
 
+		# only if tls1.0/1.1 are supported
+		def check_scsv_fallback(self):
+			pass
 
-		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=OCSPStatusRequest()):
+		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False):
 				
 			try:
 				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32) , ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=(sign_algs if sign_algs else self.sign_algs)), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
-										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[]), TLS_Ext_CSR(req=ocsp_status_req, stype=1)])])
+										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[]), \
+										(TLS_Ext_CSR(req=ocsp_status_req, stype=1) if ocsp_status_req else []), (TLS_Ext_RenegotiationInfo(renegotiated_connection=b'') if renego_info else [])])])
 			except scapy.error.PacketError as e:
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
 				print(f"Packet creation error: {e}")

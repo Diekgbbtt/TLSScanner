@@ -26,12 +26,16 @@ class test_TLSscanner():
 
     def test_get_certificate(self):
         self.scanner.get_certificate()
+    
+    def test_check_secure_renegotiation(self):
+        self.scanner.check_secure_renegotiation()
  
 if __name__ == "__main__":
 
     scanner = test_TLSscanner(target="www.alibaba.com")
-    scanner.test_protocol_versions()
-    scanner.test_get_certificate()
+    # scanner.test_protocol_versions()
+    # scanner.test_get_certificate()
+    scanner.test_check_secure_renegotiation()
 
 
 

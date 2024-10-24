@@ -150,6 +150,7 @@ def tlsScan(args):
                     ....
                 }
                 "securityImplementation_issues" : {
+                
                     "SECURE_RENEGOTIATION" : true/false
                     "TLS_FALLBACK_SCSV" : true/false
                     ....
