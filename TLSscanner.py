@@ -190,7 +190,7 @@ import logging
 import warnings
 import asyncio
 
-from OpenSSL import *
+from OpenSSL import SSL
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
@@ -242,12 +242,19 @@ class TLSscanner():
 			self.get_supportedCurves()
 			self.sock.close()
 
-		def connect(self):
-			self.create_socket()
-			self.getIPv4()
-			if(not self.check_reach()):
-				print("Connection failed")
-				sys.exit(1)
+		def connect(self, ssl_context=None):
+			
+			if ssl_context:
+				self.sock = socket.socket(family=socket.AF_INET,type=socket.SOCK_STREAM)
+				self.ssl_sock = SSL.Connection(ssl_context, self.sock)
+				self.getIPv4()
+				self.ssl_sock.connect((self.target, self.port))
+			else:
+				self.create_socket()
+				self.getIPv4()
+				if(not self.check_reach()):
+					print("Connection failed")
+					sys.exit(1)
 			
 
 		def create_socket(self):
@@ -264,6 +271,7 @@ class TLSscanner():
 		
 		def getIPv4(self):
 			self.targetIP= socket.gethostbyname(self.target)
+			print(self.targetIP)
 
 
 		def check_reach(self):
@@ -541,7 +549,7 @@ class TLSscanner():
 		
 		def get_certificate(self):
 
-			self.create_sniffer(prn=lambda x: self.fetch_certficate(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
+			self.create_sniffer(prn=lambda x: self.fetch_certficate_details(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
 			ocsp_status_req = OCSPStatusRequest(respid=[], reqext=None)
 			ch_pk = self.craft_clientHello(version=771, ocsp_status_req=ocsp_status_req)
 			self.connect()
@@ -552,7 +560,7 @@ class TLSscanner():
 			self.sock.close()
 
 
-		def fetch_certficate(self, srv_hello):
+		def fetch_certficate_details(self, srv_hello):
 			try:
 				if srv_hello.haslayer(TLSCertificate):
 					self.srv_certificate = Cert(srv_hello[TLSCertificate].certs[0][1].der)
@@ -580,72 +588,65 @@ class TLSscanner():
 			except Exception as e:
 				print(f"exception during packet dissection occurred: {e}")
 				return None
+		
+		def get_certificate_chain(self):
+
+			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
+			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
+
+			self.connect(ssl_context=context)
+
+			self.ssl_handshake()
+
+			cert_list = self.ssl_sock.get_peer_cert_chain()[0].get_extension_count()
+
+			for cert in cert_list[1:]:
+				self.analyze_certificate(cert, )
+
+		def analyze_certificate(self):
+
+
+
+
+			pass
 
 
 		def check_secure_renegotiation(self):
-			self.create_sniffer(prn=lambda x: self.get_session_id_sv_data(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
-			self.ch_pk = self.craft_clientHello(version=771, pskkxmodes=1, renego_info=True)
-			self.connect()
-			print(self.targetIP)
+			self.sniffer = AsyncSniffer(iface="en0", session=TLSSession, lfilter=lambda x: (x.haslayer(TLSServerHello) or x.haslayer(TLSFinished)), filter=f"src host {self.target}", prn=lambda x: self.manipulate_tls(x))
 			self.sniffer.start()
-			self.send(bytes(ch_pk))
-			self.sniffer.join()
-			time.sleep(5)
-			self.sock.close()
-			"""
-			self.create_sniffer(prn=lambda x: self.is_renegotiation_secure(x), stop_filter=lambda x: x.haslayer(TLSClientHello))
-			renego_pk = TLS(version=771, type=22, msg=[TLSClientHello(version=771, ciphers=ciphers[771], random_bytes=os.urandom(32), sid=self.session_id, ext=[TLS_Ext_RenegotiationInfo(renegotiated_connection=self.client_verifiy_data)])])
-			self.sniffer.start()
-			self.send(bytes(ch_pk))
-			self.sniffer.join()
-			time.sleep(1)
-			self.sock.close()
-			"""
+			self.manage_tls_session()
+			self.sniffer.stop()
 
+		def manipulate_tls(self, pk):
+				pk[TLS].show()
 
-		def get_session_id_sv_data(self, srv_hello):
+		def manage_tls_session(self):
 
+			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
+			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
+			self.connect(ssl_context=context)
+			self.ssl_handshake()
+
+			self.ssl_sock.get_peer_certificate()
+
+			self.ssl_sock.renegotiate()
+			if(self.ssl_handshake()):
+				self.ssl_sock.shutdown()
+				self.ssl_sock.close()
+
+		def ssl_handshake(self):
 			try:
-				if srv_hello.haslayer(TLSServerHello):
-						print(f"srv_hello received: \n {srv_hello[TLS].show()}")
-						self.sh_pk = srv_hello
-						self.session_id = srv_hello[TLS].msg[0].sid
-						print(f"session id: {self.session_id}")
-				elif srv_hello.haslayer(TLSServerKeyExchange):
-						self.kx_pk = self.craft_kx(curve=srv_hello[TLSServerKeyExchange].params.named_curve)
-				elif srv_hello.haslayer(TLSServerHelloDone):
-						print(f"srv_hello_done received: \n {srv_hello[TLS].show()}")
-						# print(f"client verify data: {self.client_verifiy_data}")
-						"""
-						The verification data is built from a hash of all handshake messages and verifies the integrity of the handshake process.
-						"""
-						if srv_hello.haslayer(TLSServerKeyExchange):
-							self.kx_pk = self.craft_kx(curve=srv_hello[TLSServerKeyExchange].params.named_curve)	
-							self.send(bytes(self.kx_pk))
-							self.css_pk = TLS(version=771, type=22, msg=[TLSChangeCipherSpec()])
-							self.send(bytes(self.css_pk))
-							vdata = self.create_verify_data(srv_hello)
-							cf_pk = TLS(version=771, type=22, msg=[TLSFinished(vdata=b'')])]) # verify_data=self.client_verifiy_data
-							self.send(bytes(cf_pk))
-						elif self.kx_pk:
-							self.send(bytes(self.kx_pk))
-							css_pk = TLS(version=771, type=22, msg=[TLSChangeCipherSpec()])
-							self.send(bytes(css_pk))
-							vdata = self.create_verify_data(srv_hello)
-							cf_pk = TLS(version=771, type=22, msg=[TLSFinished(vdata=b'')])]) # verify_data=self.client_verifiy_data
-							self.send(bytes(cf_pk))
-
-				# server kx can be in hellodone msg or separated dependds on server impl
-				elif srv_hello.haslayer(TLSAlert):
-						print("not proper client hello sent")
-				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
-						print("likely not proper client hello sent - connection terminated \n")
-				else:
-					pass
-
+				self.ssl_sock.do_handshake()
 			except Exception as e:
-				print(f"exception during packet dissection occurred: {e}")
-				return None
+				if "unexpected record" or "Unexpected EOF" in str(e):
+					print("server likely does not support renegotiation")
+					self.is_renegotiation_supported = False
+					self.ssl_sock.close()
+					return False
+				else:
+					print(f"Handshake failed due to exception : {e}")
+					self.ssl_sock.close()
+					exit(1)
 
 		def is_renegotiation_secure(self, srv_hello):
 			pass
@@ -653,7 +654,8 @@ class TLSscanner():
 		# only if tls1.0/1.1 are supported
 		def check_scsv_fallback(self):
 			pass
-
+		
+	
 		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False):
 				
 			try:
@@ -731,6 +733,7 @@ class TLSscanner():
 			return pubks_list
 		
 		def create_verify_data(self, srv_done):
+			pass
 			
 			
 		def get_curve(self, curve_name):
