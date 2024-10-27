@@ -190,6 +190,8 @@ import logging
 import warnings
 import asyncio
 
+from OpenSSL import *
+
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
 from scapy.asn1fields import *
@@ -582,8 +584,9 @@ class TLSscanner():
 
 		def check_secure_renegotiation(self):
 			self.create_sniffer(prn=lambda x: self.get_session_id_sv_data(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
-			ch_pk = self.craft_clientHello(version=771, pskkxmodes=1, renego_info=True)
+			self.ch_pk = self.craft_clientHello(version=771, pskkxmodes=1, renego_info=True)
 			self.connect()
+			print(self.targetIP)
 			self.sniffer.start()
 			self.send(bytes(ch_pk))
 			self.sniffer.join()
@@ -605,21 +608,34 @@ class TLSscanner():
 			try:
 				if srv_hello.haslayer(TLSServerHello):
 						print(f"srv_hello received: \n {srv_hello[TLS].show()}")
+						self.sh_pk = srv_hello
 						self.session_id = srv_hello[TLS].msg[0].sid
 						print(f"session id: {self.session_id}")
+				elif srv_hello.haslayer(TLSServerKeyExchange):
+						self.kx_pk = self.craft_kx(curve=srv_hello[TLSServerKeyExchange].params.named_curve)
 				elif srv_hello.haslayer(TLSServerHelloDone):
 						print(f"srv_hello_done received: \n {srv_hello[TLS].show()}")
 						# print(f"client verify data: {self.client_verifiy_data}")
 						"""
-						client key exchange and client change cipher spec
-						"""
-						"""
 						The verification data is built from a hash of all handshake messages and verifies the integrity of the handshake process.
 						"""
-						kx_pk = TLS(version=771, type=22, msg=[TLSClientKeyExchange(key_exchange=TLS_KeyExchange_RSA(rsa_pub_key=self.srv_certificate.public_key), verify_data=self.client_verifiy_data)])
-						css_pk = TLS(version=771, type=22, msg=[TLSChangeCipherSpec()])
-						cf_pk = TLS(version=771, type=22, msg=[TLSFinished(vdata=b'')])])
-						self.send(bytes())
+						if srv_hello.haslayer(TLSServerKeyExchange):
+							self.kx_pk = self.craft_kx(curve=srv_hello[TLSServerKeyExchange].params.named_curve)	
+							self.send(bytes(self.kx_pk))
+							self.css_pk = TLS(version=771, type=22, msg=[TLSChangeCipherSpec()])
+							self.send(bytes(self.css_pk))
+							vdata = self.create_verify_data(srv_hello)
+							cf_pk = TLS(version=771, type=22, msg=[TLSFinished(vdata=b'')])]) # verify_data=self.client_verifiy_data
+							self.send(bytes(cf_pk))
+						elif self.kx_pk:
+							self.send(bytes(self.kx_pk))
+							css_pk = TLS(version=771, type=22, msg=[TLSChangeCipherSpec()])
+							self.send(bytes(css_pk))
+							vdata = self.create_verify_data(srv_hello)
+							cf_pk = TLS(version=771, type=22, msg=[TLSFinished(vdata=b'')])]) # verify_data=self.client_verifiy_data
+							self.send(bytes(cf_pk))
+
+				# server kx can be in hellodone msg or separated dependds on server impl
 				elif srv_hello.haslayer(TLSAlert):
 						print("not proper client hello sent")
 				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
@@ -641,11 +657,11 @@ class TLSscanner():
 		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False):
 				
 			try:
-				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32) , ext=[ \
+				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32), ext=[ \
 										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=(sign_algs if sign_algs else self.sign_algs)), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
-										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), TLS_Ext_KeyShare_CH(client_shares=[]), \
+										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), \
 										(TLS_Ext_CSR(req=ocsp_status_req, stype=1) if ocsp_status_req else []), (TLS_Ext_RenegotiationInfo(renegotiated_connection=b'') if renego_info else [])])])
 			except scapy.error.PacketError as e:
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
@@ -667,18 +683,24 @@ class TLSscanner():
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
 				print(e)
 				sys.exit(1)
-				
-			pubkeys = self.generate_keys(crvs=groups)
-
-			if not isinstance(groups, list):
-				groups = [groups]
-
-			for curve, pu_key in zip(list(groups), pubkeys):
-				ch_pk[TLSClientHello].ext[8].client_shares.append(KeyShareEntry(group=curve, key_exchange=pu_key, kxlen=len((pu_key))))
-
+			
 			ch_pk[TLS].len = len(raw(ch_pk[TLSClientHello]))
+			if(version==772):
+				ch_pk.msg[0].ext.append(TLS_Ext_KeyShare_CH(client_shares=[]))
+				pubkeys = self.generate_keys(crvs=groups)
+				if not isinstance(groups, list):
+					groups = [groups]
+				for curve, pu_key in zip(list(groups), pubkeys):
+					ch_pk[TLS_Ext_KeyShare_CH].client_shares.append(KeyShareEntry(group=curve, key_exchange=pu_key, kxlen=len((pu_key))))
 
 			return ch_pk
+
+		def craft_kx(self, curve):
+			kx_pk = TLS(version=771, type=22, msg=[TLSClientKeyExchange(exchkeys=[])])
+			pu_key = self.generate_keys(crvs=curve)
+			kx_pk[TLSClientKeyExchange].exchkeys.append(KeyShareEntry(group=curve, key_exchange=pu_key, kxlen=len((pu_key))))
+			return kx_pk
+
 		
 		def generate_keys(self, crvs=SUPP_CV_GROUPS_test): # per ora  non salviamo chiave priv
 			pubks_list =[]
@@ -708,6 +730,9 @@ class TLSscanner():
 
 			return pubks_list
 		
+		def create_verify_data(self, srv_done):
+			
+			
 		def get_curve(self, curve_name):
 			curve_map = {
 				"secp192r1": NIST192p,
