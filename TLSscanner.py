@@ -629,8 +629,19 @@ class TLSscanner():
 			else:
 				self.CA_certificate.is_expired = False
 
-			# verify extensions of parent cert: if it is a CA
-			crypto_cert = parent_cert.to_cryptography()
+
+			# verify if it is the cert of a CA
+			scapy_cert = Cert(parent_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
+			if not scapy_cert.cA:
+				self.CA_certificate.is_CA = False
+				return
+			else:
+				self.CA_certificate.is_CA = True
+
+			# verify SubjectKeyId leaf and AuthorityKeyId parent
+			if scapy_cert.x509Cert ==			
+
+			# verify extensions of parent cert
 			for i in range(0, parent_cert.get_extension_count()):
 				match crypto_cert.extensions[i].oid._name:
 					case "basicConstraints":
