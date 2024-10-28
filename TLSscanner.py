@@ -611,9 +611,9 @@ class TLSscanner():
 
 			for i in range (1, len(cert_list)):
 			
-				self.analyze_certificate(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=True)
+				self.analyze_certificates(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=True)
 
-		def analyze_certificate(self, child_cert, parent_cert, leaf=False):
+		def analyze_certificates(self, child_cert, parent_cert, leaf=False):
 			
 			# fetch target certificate details
 
@@ -639,13 +639,20 @@ class TLSscanner():
 				self.CA_certificate.is_CA = True
 
 			# verify SubjectKeyId leaf and AuthorityKeyId parent
-			if scapy_cert.x509Cert ==			
+			if leaf:
+
+				self.srv_certificate.pubKey
+				pass
+
+			
 
 			# verify extensions of parent cert
+
+			crypto_leaf_cert = parent_cert.to_cryptography()
 			for i in range(0, parent_cert.get_extension_count()):
-				match crypto_cert.extensions[i].oid._name:
-					case "basicConstraints":
-						if not crypto_cert.extensions[i].value.ca:
+				match crypto_leaf_cert.extensions[i].oid._name:
+					case "subjectKeyIdentifier":
+						if not crypto_leaf_cert.extensions[i].value.digest:
 							self.CA_certificate.is_CA =	False
 							return
 						else :
