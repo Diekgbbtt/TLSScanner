@@ -687,15 +687,25 @@ class TLSscanner():
 	
 
 	        # verify validity of certificate signature
-			self.check_sign(crypto_child_cert, crypto_parent_cert)
+			if(self.check_sign(crypto_child_cert, crypto_parent_cert)==None):
+				if leaf:
+					self.srv_certificate.is_signature_valid = True
+				else :
+					self.CA_certificate.is_signature_valid = True
+			else:
+				if leaf:
+					self.srv_certificate.is_signature_valid = False
+				else :
+					self.CA_certificate.is_signature_valid = False
 							
 							
 
 
 
 		
-		def check_sign(self, crypto_cert):
-			pass
+		def check_sign(self, crypto_child_cert, crypto_parent_cert):
+			return crypto_child_cert.verify_directly_issued_by(crypto_parent_cert)
+
 
 
 		def check_secure_renegotiation(self):
