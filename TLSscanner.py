@@ -619,6 +619,9 @@ class TLSscanner():
 			# fetch target certificate details
 
 			if leaf:
+				self.srv_certificate.correct_subject = self.target in child_cert.get_subject().commonName
+				
+
 				
 				
 				pass
@@ -639,32 +642,34 @@ class TLSscanner():
 			else:
 				self.CA_certificate.is_CA = True
 
-			# verify correct keyUsage of parent and child cert
+			# verify correct keyUsage of parent and child cert 
+			# For a TLS server certificate, the correct values should be:
+			# digitalSignature (for TLS handshake)
+			# keyEncipherment (when using RSA key exchange)
+			# keyAgreement (when using DH/ECDH key exchange)
 			scapy_child_cert = Cert(child_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
-			if self.ssl_sock.get_cipher_name().startswith(["ECDHE", "ECDH", "DH", "DHE", "AES", "CHACHA"]):
-				if leaf:
+			if leaf:
+				if self.ssl_sock.get_cipher_name().startswith(["ECDHE", "ECDH", "DH", "DHE", "AES", "CHACHA"]):
 					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyAgreement' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2:
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
 						self.srv_certificate.is_keyUsage_correct = False
 						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
-				else:
-					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyCertSign' in scapy_child_cert.keyUsage and 'cRLSign' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==3:
-						self.srv_certificate.is_keyUsage_correct = True
-					else:
-						self.srv_certificate.is_keyUsage_correct = False
-						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
-			elif self.ssl_sock.get_cipher_name().startswith("RSA"):
-				if leaf:
+				elif self.ssl_sock.get_cipher_name().startswith("RSA"):
 					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyEncipherment' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2:
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
 						self.srv_certificate.is_keyUsage_correct = False
 						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
+			else:
+				if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyCertSign' in scapy_child_cert.keyUsage and 'cRLSign' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==3:
+					self.CA_certificate.is_keyUsage_correct = True
+				else:
+					self.CA_certificate.is_keyUsage_correct = False
+					print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 
 
 			# verify extensions of parent cert for missing details in scapy structured cert
-
 			crypto_parent_cert = parent_cert.to_cryptography()
 			crypto_child_cert = child_cert.to_cryptography()
 			for i in range(0, parent_cert.get_extension_count()):

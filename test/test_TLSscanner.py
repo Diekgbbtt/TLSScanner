@@ -35,7 +35,7 @@ class test_TLSscanner():
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="www.alibaba.com")
+    scanner = test_TLSscanner(target="alibaba.com")
     # scanner.test_protocol_versions()
     scanner.test_get_certificate()
     # scanner.test_check_secure_renegotiation()
