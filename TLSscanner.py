@@ -184,6 +184,7 @@ Mitigation: Ensure strict support for TLS 1.3 and use downgrade-resistant mechan
 """
 
 
+import datetime
 import socket, sys, os, ssl
 
 import logging
@@ -612,12 +613,11 @@ class TLSscanner():
 				self.analyze_certificate(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=True)
 
 		def analyze_certificate(self, child_cert, parent_cert, leaf=False):
-
-			if parent_cert.has_expired():
+			# verify expiry of parent cert, if expired useless proceed with furhter verifications
+			if parent_cert.has_expired() # verification with cryptography : (parent_cert.not_valid_after_utc() <= datetime.datetime.now(datetime.timezone.utc)):
 				self.CA_certificate.is_expired = True
 				return
-			if parent_cert.get_extension(0):
-				
+			if parent_cert.to_cryptography().extensions[0]
 			if leaf:
 				self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
 				self.srv_certificate.is_expired = child_cert.has_expired()
