@@ -614,13 +614,26 @@ class TLSscanner():
 
 		def analyze_certificate(self, child_cert, parent_cert, leaf=False):
 			# verify expiry of parent cert, if expired useless proceed with furhter verifications
-			if parent_cert.has_expired() # verification with cryptography : (parent_cert.not_valid_after_utc() <= datetime.datetime.now(datetime.timezone.utc)):
+			if parent_cert.has_expired(): # verification with cryptography : (parent_cert.not_valid_after_utc() <= datetime.datetime.now(datetime.timezone.utc)):
 				self.CA_certificate.is_expired = True
 				return
-			if parent_cert.to_cryptography().extensions[0]
-			if leaf:
-				self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
-				self.srv_certificate.is_expired = child_cert.has_expired()
+			else:
+				self.CA_certificate.is_expired = False
+
+			# verify extensions of parent cert: if it is a CA
+			crypto_cert = parent_cert.to_cryptography()
+			for i in range(0, parent_cert.get_extension_count()):
+				match crypto_cert.extensions[i].oid._name:
+					case "basicConstraints":
+						if not crypto_cert.extensions[i].value.ca:
+							self.CA_certificate.is_CA =	False
+							return
+						else :
+							self.CA_certificate.is_CA = True
+					case 
+
+			self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
+			self.srv_certificate.is_expired = child_cert.has_expired()
 
 			pass
 
