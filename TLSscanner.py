@@ -190,7 +190,7 @@ import logging
 import warnings
 import asyncio
 
-from OpenSSL import SSL
+from OpenSSL import SSL, crypto 
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
@@ -597,16 +597,30 @@ class TLSscanner():
 			self.connect(ssl_context=context)
 
 			self.ssl_handshake()
+			"""
+			X509_verify_flags = crypto.X509StoreFlags.CHECK_SS_SIGNATURE
 
-			cert_list = self.ssl_sock.get_peer_cert_chain()[0].get_extension_count()
+			X509Store = crypto.X509Store()
+			X509Store.set_flags(X509_verify_flags)
+			X509Store.load_locations(cafile="")
+			"""
 
-			for cert in cert_list[1:]:
-				self.analyze_certificate(cert, )
+			cert_list = self.ssl_sock.get_peer_cert_chain()
 
-		def analyze_certificate(self):
+			for i in range (1, len(cert_list)):
+			
+				self.analyze_certificate(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=True)
 
+		def analyze_certificate(self, child_cert, parent_cert, leaf=False):
 
-
+			if parent_cert.has_expired():
+				self.CA_certificate.is_expired = True
+				return
+			if parent_cert.get_extension(0):
+				
+			if leaf:
+				self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
+				self.srv_certificate.is_expired = child_cert.has_expired()
 
 			pass
 
