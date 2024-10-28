@@ -191,7 +191,9 @@ import logging
 import warnings
 import asyncio
 
-from OpenSSL import SSL, crypto 
+from OpenSSL import SSL
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes 
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
@@ -657,7 +659,6 @@ class TLSscanner():
 							return
 						else :
 							self.CA_certificate.is_CA = True
-					case 
 
 			self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
 			self.srv_certificate.is_expired = child_cert.has_expired()
@@ -708,8 +709,8 @@ class TLSscanner():
 		# only if tls1.0/1.1 are supported
 		def check_scsv_fallback(self):
 			pass
-		
 	
+		
 		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False):
 				
 			try:
@@ -751,11 +752,6 @@ class TLSscanner():
 
 			return ch_pk
 
-		def craft_kx(self, curve):
-			kx_pk = TLS(version=771, type=22, msg=[TLSClientKeyExchange(exchkeys=[])])
-			pu_key = self.generate_keys(crvs=curve)
-			kx_pk[TLSClientKeyExchange].exchkeys.append(KeyShareEntry(group=curve, key_exchange=pu_key, kxlen=len((pu_key))))
-			return kx_pk
 
 		
 		def generate_keys(self, crvs=SUPP_CV_GROUPS_test): # per ora  non salviamo chiave priv
