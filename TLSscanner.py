@@ -643,22 +643,32 @@ class TLSscanner():
 			# verify SubjectKeyId leaf and AuthorityKeyId parent
 			if leaf:
 
-				self.srv_certificate.pubKey
+				
 				pass
 
 			
 
 			# verify extensions of parent cert
 
-			crypto_leaf_cert = parent_cert.to_cryptography()
+			crypto_parent_cert = parent_cert.to_cryptography()
+			crypto_child_cert = child_cert.to_cryptography()
 			for i in range(0, parent_cert.get_extension_count()):
-				match crypto_leaf_cert.extensions[i].oid._name:
+				match crypto_parent_cert.extensions[i].oid._name:
+				# The AuthorityKeyIdentifier (AKI) in the child certificate can be populated in multiple ways according to RFC 5280: 
+				# Using the Subject Key Identifier from the parent certificate directly, 
+				# Computing a hash of the parent's public key, 
+				# Computing a hash of the parent certificate's subject name and serial number
 					case "subjectKeyIdentifier":
-						if not crypto_leaf_cert.extensions[i].value.digest:
-							self.CA_certificate.is_CA =	False
-							return
-						else :
-							self.CA_certificate.is_CA = True
+							if not crypto_parent_cert.extensions[i].value.key_identifier == Cert(crypto_child_cert.public_bytes(encoding=serialization.Encoding.DER)).authorityKeyID:
+								self.valid_cert_chain =	False
+								print("SubjectKeyId leaf and AuthorityKeyId parent not matching, chain is not valid")
+								return
+							else :
+								self.valid_cert_chain = True
+							
+					case "AuthorityKeyIdentifier":
+						if not leaf:
+							
 
 			self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
 			self.srv_certificate.is_expired = child_cert.has_expired()
