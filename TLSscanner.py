@@ -565,6 +565,7 @@ class TLSscanner():
 			try:
 				if srv_hello.haslayer(TLSCertificate):
 					self.srv_certificate = Cert(srv_hello[TLSCertificate].certs[0][1].der)
+					self.srv_certificate.der = srv_hello[TLSCertificate].certs[0][1].der
 				if srv_hello.haslayer(TLSCertificateStatus):
 					self.srv_certificate.valid_cert = srv_hello.haslayer(OCSP_GoodInfo) # (False if isinstance(srv_hello[OCSP_CertStatus].cert_status, OCSP_GoodInfo) else True)
 					if self.srv_certificate.valid_cert:
@@ -613,6 +614,14 @@ class TLSscanner():
 				self.analyze_certificate(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=True)
 
 		def analyze_certificate(self, child_cert, parent_cert, leaf=False):
+			
+			# fetch target certificate details
+
+			if leaf:
+				
+				
+				pass
+
 			# verify expiry of parent cert, if expired useless proceed with furhter verifications
 			if parent_cert.has_expired(): # verification with cryptography : (parent_cert.not_valid_after_utc() <= datetime.datetime.now(datetime.timezone.utc)):
 				self.CA_certificate.is_expired = True
