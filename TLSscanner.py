@@ -184,7 +184,6 @@ Mitigation: Ensure strict support for TLS 1.3 and use downgrade-resistant mechan
 """
 
 
-import datetime
 import socket, sys, os, ssl
 
 import logging
@@ -192,8 +191,6 @@ import warnings
 import asyncio
 
 from OpenSSL import SSL
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes 
 
 from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
@@ -609,6 +606,8 @@ class TLSscanner():
 			X509Store.load_locations(cafile="")
 			"""
 
+			self.ssl_sock.get_cipher_name()
+
 			cert_list = self.ssl_sock.get_peer_cert_chain()
 
 			for i in range (1, len(cert_list)):
@@ -633,22 +632,38 @@ class TLSscanner():
 
 
 			# verify if it is the cert of a CA
-			scapy_cert = Cert(parent_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
-			if not scapy_cert.cA:
+			scapy_parent_cert = Cert(parent_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
+			if not scapy_parent_cert.cA:
 				self.CA_certificate.is_CA = False
 				return
 			else:
 				self.CA_certificate.is_CA = True
 
-			# verify SubjectKeyId leaf and AuthorityKeyId parent
-			if leaf:
+			# verify correct keyUsage of parent and child cert
+			scapy_child_cert = Cert(child_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
+			if self.ssl_sock.get_cipher_name().startswith(["ECDHE", "ECDH", "DH", "DHE", "AES", "CHACHA"]):
+				if leaf:
+					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyAgreement' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2:
+						self.srv_certificate.is_keyUsage_correct = True
+					else:
+						self.srv_certificate.is_keyUsage_correct = False
+						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
+				else:
+					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyCertSign' in scapy_child_cert.keyUsage and 'cRLSign' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==3:
+						self.srv_certificate.is_keyUsage_correct = True
+					else:
+						self.srv_certificate.is_keyUsage_correct = False
+						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
+			elif self.ssl_sock.get_cipher_name().startswith("RSA"):
+				if leaf:
+					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyEncipherment' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2:
+						self.srv_certificate.is_keyUsage_correct = True
+					else:
+						self.srv_certificate.is_keyUsage_correct = False
+						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 
-				
-				pass
 
-			
-
-			# verify extensions of parent cert
+			# verify extensions of parent cert for missing details in scapy structured cert
 
 			crypto_parent_cert = parent_cert.to_cryptography()
 			crypto_child_cert = child_cert.to_cryptography()
@@ -666,8 +681,9 @@ class TLSscanner():
 							else :
 								self.valid_cert_chain = True
 							
-					case "AuthorityKeyIdentifier":
-						if not leaf:
+					case "keyUsage":
+
+							
 							
 
 			self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
