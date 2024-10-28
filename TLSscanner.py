@@ -619,9 +619,9 @@ class TLSscanner():
 			# fetch target certificate details
 
 			if leaf:
+				self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
+				self.srv_certificate.is_expired = child_cert.has_expired()
 				self.srv_certificate.correct_subject = self.target in child_cert.get_subject().commonName
-				
-
 				
 				
 				pass
@@ -650,13 +650,13 @@ class TLSscanner():
 			scapy_child_cert = Cert(child_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
 			if leaf:
 				if self.ssl_sock.get_cipher_name().startswith(["ECDHE", "ECDH", "DH", "DHE", "AES", "CHACHA"]):
-					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyAgreement' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2:
+					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyAgreement' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2 and 'serverAuth' in scapy_child_cert.extKeyUsage:
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
 						self.srv_certificate.is_keyUsage_correct = False
 						print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 				elif self.ssl_sock.get_cipher_name().startswith("RSA"):
-					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyEncipherment' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2:
+					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyEncipherment' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2 and 'serverAuth' in scapy_child_cert.extKeyUsage:
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
 						self.srv_certificate.is_keyUsage_correct = False
@@ -668,10 +668,9 @@ class TLSscanner():
 					self.CA_certificate.is_keyUsage_correct = False
 					print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 
-
 			# verify extensions of parent cert for missing details in scapy structured cert
 			crypto_parent_cert = parent_cert.to_cryptography()
-			crypto_child_cert = child_cert.to_cryptography()
+			crypto_child_cert = child_cert.to_cryptography().verify_directly_issued_by()
 			for i in range(0, parent_cert.get_extension_count()):
 				match crypto_parent_cert.extensions[i].oid._name:
 				# The AuthorityKeyIdentifier (AKI) in the child certificate can be populated in multiple ways according to RFC 5280: 
@@ -685,15 +684,17 @@ class TLSscanner():
 								return
 							else :
 								self.valid_cert_chain = True
-							
-					case "keyUsage":
+	
 
+	        # verify validity of certificate signature
+			self.check_sign(crypto_child_cert, crypto_parent_cert)
 							
 							
 
-			self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
-			self.srv_certificate.is_expired = child_cert.has_expired()
 
+
+		
+		def check_sign(self, crypto_cert):
 			pass
 
 
