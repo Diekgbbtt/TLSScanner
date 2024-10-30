@@ -598,33 +598,24 @@ class TLSscanner():
 			self.connect(ssl_context=context)
 
 			self.ssl_handshake()
-			"""
-			X509_verify_flags = crypto.X509StoreFlags.CHECK_SS_SIGNATURE
-
-			X509Store = crypto.X509Store()
-			X509Store.set_flags(X509_verify_flags)
-			X509Store.load_locations(cafile="")
-			"""
 
 			self.ssl_sock.get_cipher_name()
 
 			cert_list = self.ssl_sock.get_peer_cert_chain()
 
 			for i in range (1, len(cert_list)):
-			
-				self.analyze_certificates(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=True)
+				
+				self.analyze_certificates(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=(True if i==1 else False))
 
 		def analyze_certificates(self, child_cert, parent_cert, leaf=False):
 			
+			self.CA_certificate = Cert(parent_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
 			# fetch target certificate details
 
 			if leaf:
 				self.srv_certificate.is_subject_same_as_issuer = child_cert.get_issuer().CN == parent_cert.get_subject().CN
 				self.srv_certificate.is_expired = child_cert.has_expired()
 				self.srv_certificate.correct_subject = self.target in child_cert.get_subject().commonName
-				
-				
-				pass
 
 			# verify expiry of parent cert, if expired useless proceed with furhter verifications
 			if parent_cert.has_expired(): # verification with cryptography : (parent_cert.not_valid_after_utc() <= datetime.datetime.now(datetime.timezone.utc)):
@@ -649,7 +640,7 @@ class TLSscanner():
 			# keyAgreement (when using DH/ECDH key exchange)
 			scapy_child_cert = Cert(child_cert.to_cryptography().public_bytes(encoding=serialization.Encoding.DER))
 			if leaf:
-				if self.ssl_sock.get_cipher_name().startswith(["ECDHE", "ECDH", "DH", "DHE", "AES", "CHACHA"]):
+				if self.ssl_sock.get_cipher_name().startswith(("ECDHE", "ECDH", "DH", "DHE", "AES", "CHACHA")):
 					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyAgreement' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2 and 'serverAuth' in scapy_child_cert.extKeyUsage:
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
@@ -670,7 +661,7 @@ class TLSscanner():
 
 			# verify extensions of parent cert for missing details in scapy structured cert
 			crypto_parent_cert = parent_cert.to_cryptography()
-			crypto_child_cert = child_cert.to_cryptography().verify_directly_issued_by()
+			crypto_child_cert = child_cert.to_cryptography()
 			for i in range(0, parent_cert.get_extension_count()):
 				match crypto_parent_cert.extensions[i].oid._name:
 				# The AuthorityKeyIdentifier (AKI) in the child certificate can be populated in multiple ways according to RFC 5280: 
@@ -681,7 +672,7 @@ class TLSscanner():
 							if not crypto_parent_cert.extensions[i].value.key_identifier == Cert(crypto_child_cert.public_bytes(encoding=serialization.Encoding.DER)).authorityKeyID:
 								self.valid_cert_chain =	False
 								print("SubjectKeyId leaf and AuthorityKeyId parent not matching, chain is not valid")
-								return
+								continue
 							else :
 								self.valid_cert_chain = True
 	
@@ -698,38 +689,55 @@ class TLSscanner():
 				else :
 					self.CA_certificate.is_signature_valid = False
 							
-							
-
-
-
 		
 		def check_sign(self, crypto_child_cert, crypto_parent_cert):
 			return crypto_child_cert.verify_directly_issued_by(crypto_parent_cert)
 
 
-
 		def check_secure_renegotiation(self):
-			self.sniffer = AsyncSniffer(iface="en0", session=TLSSession, lfilter=lambda x: (x.haslayer(TLSServerHello) or x.haslayer(TLSFinished)), filter=f"src host {self.target}", prn=lambda x: self.manipulate_tls(x))
-			self.sniffer.start()
-			self.manage_tls_session()
-			self.sniffer.stop()
-
-		def manipulate_tls(self, pk):
-				pk[TLS].show()
-
-		def manage_tls_session(self):
 
 			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
 			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
 			self.connect(ssl_context=context)
 			self.ssl_handshake()
 
-			self.ssl_sock.get_peer_certificate()
-
 			self.ssl_sock.renegotiate()
 			if(self.ssl_handshake()):
 				self.ssl_sock.shutdown()
 				self.ssl_sock.close()
+			else:
+				self.is_renegotiation_secure()
+
+
+		def is_renegotiation_secure(self):
+			pass
+
+		# only if tls1.0/1.1 are supported
+		def check_scsv_fallback(self):
+			pass
+		
+		# check heartbleed vulnerabiltiy
+		# the Heartbleed bug allowed attackers to read sensitive information directly from the memory of servers using vulnerable OpenSSL versions
+		# The vulnerability originated from improper bounds checking on the payload length.
+		# Attackers could craft a heartbeat request with a fake payload length (up to 64 KB), even if the payload data sent was smaller or even empty.
+		# The server would then respond with more data than requested, leaking sensitive information from its memory buffer.
+		
+		def check_heartbleed(self):
+			
+			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
+			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
+			self.connect(ssl_context=context)
+			self.ssl_handshake()
+			hb_pk = TLS(version=771, type=22, msg=[]) / TLS_Ext_Heartbeat(heartbeat_mode=1)
+			self.ssl_sock.send(bytes(hb_pk))
+			try:
+				response = self.ssl_sock.recv(1024)
+			except SSL.ZeroReturnError:
+				print("Connection close received, Heartbleed likely not possible")
+				return
+			print(response.decode())
+			
+		
 
 		def ssl_handshake(self):
 			try:
@@ -745,14 +753,7 @@ class TLSscanner():
 					self.ssl_sock.close()
 					exit(1)
 
-		def is_renegotiation_secure(self, srv_hello):
-			pass
 
-		# only if tls1.0/1.1 are supported
-		def check_scsv_fallback(self):
-			pass
-	
-		
 		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False):
 				
 			try:

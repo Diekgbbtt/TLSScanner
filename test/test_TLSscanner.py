@@ -32,14 +32,18 @@ class test_TLSscanner():
 
     def test_analyze_cert_chain(self):
         self.scanner.get_certificate_chain()
+
+    def test_check_heartbleed(self):
+        self.scanner.check_heartbleed()
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="alibaba.com")
+    scanner = test_TLSscanner(target="juice-shop.herokuapp.com")
     # scanner.test_protocol_versions()
-    scanner.test_get_certificate()
+    # scanner.test_get_certificate()
     # scanner.test_check_secure_renegotiation()
-    scanner.test_analyze_cert_chain()
+    # scanner.test_analyze_cert_chain()
+    scanner.test_check_heartbleed()
 
 
 
