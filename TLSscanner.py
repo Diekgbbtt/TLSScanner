@@ -732,7 +732,7 @@ class TLSscanner():
 			self.ssl_sock.send(bytes(hb_pk))
 			try:
 				response = self.ssl_sock.recv(1024)
-			except SSL.ZeroReturnError:
+			except SSL.ZeroReturnError as err:
 				print("Connection close received, Heartbleed likely not possible")
 				return
 			print(response.decode())
