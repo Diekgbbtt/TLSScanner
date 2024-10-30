@@ -729,6 +729,7 @@ class TLSscanner():
 			self.connect(ssl_context=context)
 			self.ssl_handshake()
 			hb_pk = TLS(version=771, type=22, msg=[]) / TLS_Ext_Heartbeat(heartbeat_mode=1)
+			hb_pk
 			self.ssl_sock.send(bytes(hb_pk))
 			try:
 				response = self.ssl_sock.recv(1024)
