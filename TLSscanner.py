@@ -728,17 +728,18 @@ class TLSscanner():
 			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
 			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
 			self.connect(ssl_context=context)
-			sniffer = AsyncSniffer(prn=lambda x: x.show()), iface="en0", store=False, session=TLSSession, filter=f"src host {self.target} or dst host port {self.target}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11)))
+			sniffer = AsyncSniffer(prn=lambda x: x.show(), iface="en0", store=False, session=TLSSession, filter=f"src host {self.target} or dst host port {self.target}", timeout=10)
+			sniffer.start()
 			self.ssl_handshake()
 			hb_pk = TLS(version=771, type=22, msg=[]) / TLS_Ext_Heartbeat(heartbeat_mode=1)
 			self.ssl_sock.send(bytes(hb_pk))
 			try:
 				response = self.ssl_sock.recv(1024)
+				print(response.decode())
+				sniffer.stop()
 			except SSL.ZeroReturnError:
 				print("Connection close received, Heartbleed likely not possible")
 				return
-			print(response.decode())
-			
 		
 
 		def ssl_handshake(self):
@@ -877,7 +878,7 @@ class TLSscanner():
 
 
 if __name__ == "__main__":
-	scanner = TLSscanner(target="www.ikea.com")
+	scanner = TLSscanner(target="juice-shop.herokuapp.com")
 	scanner.scan()
 
 
