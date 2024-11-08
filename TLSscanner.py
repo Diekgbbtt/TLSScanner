@@ -722,14 +722,15 @@ class TLSscanner():
 		# Attackers could craft a heartbeat request with a fake payload length (up to 64 KB), even if the payload data sent was smaller or even empty.
 		# The server would then respond with more data than requested, leaking sensitive information from its memory buffer.
 		
+		# https://encryptorium.medium.com/the-heartbleed-vulnerability-cve-2014-0160-69eb175cafa7
 		def check_heartbleed(self):
 			
 			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
 			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
 			self.connect(ssl_context=context)
+			sniffer = AsyncSniffer(prn=lambda x: x.show()), iface="en0", store=False, session=TLSSession, filter=f"src host {self.target} or dst host port {self.target}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11)))
 			self.ssl_handshake()
 			hb_pk = TLS(version=771, type=22, msg=[]) / TLS_Ext_Heartbeat(heartbeat_mode=1)
-			hb_pk
 			self.ssl_sock.send(bytes(hb_pk))
 			try:
 				response = self.ssl_sock.recv(1024)
