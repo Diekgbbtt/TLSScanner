@@ -8,8 +8,8 @@ from TLSscanner import TLSscanner
 
 class test_TLSscanner():
 
-    def __init__(self, target):
-        self.scanner = TLSscanner(target=target)
+    def __init__(self, target, dstport):
+        self.scanner = TLSscanner(target=target, dstport=dstport)
 
     def test_protocol_versions(self):
         self.scanner.get_supportedProtocols()
@@ -38,7 +38,7 @@ class test_TLSscanner():
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="juice-shop.herokuapp.com")
+    scanner = test_TLSscanner(target="192.168.1.192", dstport=8443)
     # scanner.test_protocol_versions()
     # scanner.test_get_certificate()
     # scanner.test_check_secure_renegotiation()

