@@ -35,6 +35,12 @@ class test_TLSscanner():
 
     def test_check_heartbleed(self):
         self.scanner.check_heartbleed()
+    
+    def test_check_ccsinjection(self):
+        self.scanner.check_ccsinjection()
+    
+    def test_check_crime(self):
+        self.scanner.check_crime()
  
 if __name__ == "__main__":
 
@@ -43,7 +49,9 @@ if __name__ == "__main__":
     # scanner.test_get_certificate()
     # scanner.test_check_secure_renegotiation()
     # scanner.test_analyze_cert_chain()
-    scanner.test_check_heartbleed()
+    # scanner.test_check_heartbleed()
+    # scanner.test_check_ccsinjection()
+    scanner.test_check_crime()
 
 
 

