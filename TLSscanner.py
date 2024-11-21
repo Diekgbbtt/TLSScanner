@@ -4,191 +4,6 @@
 __version__ = "0.0.1"
 __author__ = "Diego Gobbetti"
 
-
-"""
-notes protocols 1.2 and 1.3 :
-		TLS 1.2:
-			with tls 1.2 if the agreed cipher suite uses ECDHE(ellicptic curves diffie Hillman epheremal)
-			like most fo the times, client and server will share ciphering keys without directly sending them, neither 
-			ciphered, so the data in the messages following the handshake will be encrypted with a symmetryc encryption algorithm. The handshake process involves the following : with exchange of client_hello-server, client and server agree on a cipher suite, an elliptic curve and signing algorithm,
-			server calculate a private/public key pair, based on the agreed curve. Server sends the public key, and a certificate. the certificate includes a public key that it certifies, 
-			server hostname and a proof from a CA that the owner of this hostname holds the private key linked to the public key in this certificate(the proof is a firm with the CA private key of the certificate, testable with the CA public written in the certificate).
-			Tipically client verifies legitimacy of the certificate recursing the CA chain.
-			Since the chosen cipher suite wants ephemeral keys, the private/public key pair used is the one created from the server not the one linked to the certificate, so in public key exchange message the server adds a firm made with a signing alg from teh list of
-			signing algs from teh list in client hello and the private key linked to the public key in the certificate, this is why the certificate sent from the serevr can vary depending on the accepted signs algs accepted by the client, furthermore in the certificate decision is 
-			involved also the sign alg used by the CA to firm the certificate itself.
-			Then, the client sends as well a public key generated the same way the server did, based on the agreed elliptic curve.
-			How the private/public exchange key pair are caculated and the preMasterSecret retrieved change depending on the algorithm in the chosen cipher suite(RSA, ECDHE, DHE, ECDH, DH).
-			With RSA the client calculate directly the 48 bytes premasterSecret and encrypt it with the public key of the certificate.
-			Now both client and server has everything to calculate the shared encription keys, the calculation involves the following steps:
-			PreMasterSecret = serverPrivatekey|clientPrivateKey * clientPublicKey|serverPublickey (scalar moltiplication accoding to the chosen ec)
-			seed = "master secret" + client_random + server_random
-			a0 = seed
-			a1 = HMAC-SHA256(key=PreMasterSecret, data=a0)
-			a2 = HMAC-SHA256(key=PreMasterSecret, data=a1)
-			p1 = HMAC-SHA256(key=PreMasterSecret, data=a1 + seed)
-			p2 = HMAC-SHA256(key=PreMasterSecret, data=a2 + seed)
-			MasterSecret = p1[all 32 bytes] + p2[first 16 bytes]
-			seed = "key expansion" + server_random + client_random
-			a0 = seed
-			a1 = HMAC-SHA256(key=MasterSecret, data=a0)
-			a2 = HMAC-SHA256(key=MasterSecret, data=a1)
-			a3 = HMAC-SHA256(key=MasterSecret, data=a2)
-			a4 = ...
-			p1 = HMAC-SHA256(key=MasterSecret, data=a1 + seed)
-			p2 = HMAC-SHA256(key=MasterSecret, data=a2 + seed)
-			p3 = HMAC-SHA256(key=MasterSecret, data=a3 + seed)
-			p4 = ...
-			p = p1 + p2 + p3 + p4 ...
-			client write mac key = [first 20 bytes of p]
-			server write mac key = [next 20 bytes of p]
-			client write key = [next 16 bytes of p]
-			server write key = [next 16 bytes of p]
-			client write IV = [next 16 bytes of p]
-			server write IV = [next 16 bytes of p]
-
-
-
-		TLS 1.3:
-			- no more session tickets
-			- no more renegotiation
-			- no more compression
-			- no more session resumption
-			- no more PSK
-			- no more certificate verify
-			- no more certificate status
-
-			
-notes certificate format :
-
-web servers certificates are commonly X.509 certificates. 
-X.509 is a standard for public key certificates, data is structured in a tree according to 
-ASN1(Abstract Syntax Notation One), it defines the fields in a hierarchical way. 
-Data is tipically encoded in BER(Basic Encoding Rules) or DER(Distinguished Encoding Rules), mainly DER.
-DER data is then wrapped by PEM (Privacy Enhanced Mail) format, that is a base64 encoding of the DER and teh addition of a
----BEGIN CERTIFICATE--- and ---END CERTIFICATE--- header and footer.
-
-
-notes certificate fields :
-
-• Version: The version of the X.509 certificate standard (usually X.509 v3).
-• Serial Number: A unique number assigned by the Certificate Authority (CA) to identify the certificate.
-• Signature Algorithm: The algorithm used to sign the certificate (e.g., SHA-256 with RSA).
-• Issuer: The entity that issued and signed the certificate (usually a trusted Certificate Authority).
-• Validity Period:
-  • Not Before: The start date and time when the certificate becomes valid.
-  • Not After: The end date and time when the certificate expires.
-• Subject: Information about the entity to whom the certificate is issued (often includes):
-  • Common Name (CN): The domain name or hostname.
-  • Organization (O): The name of the organization.
-  • Organizational Unit (OU): The department or division.
-  • Country (C): The country of the organization.
-  • Locality (L): The city or town.
-  • State or Province (ST): The state or province.
-• Public Key: The public key corresponding to the private key used by the server.
-• Subject Public Key Info: Information about the public key algorithm and the public key itself.
-• Key Usage: Specifies the intended purpose of the public key (e.g., digital signature, key encipherment).
-• Extended Key Usage: Specifies additional purposes for which the certificate’s public key can be used.
-• Subject Alternative Name (SAN): Lists additional domain names, IP addresses, or email addresses.
-• Basic Constraints: Indicates whether the certificate is a CA or an end-entity certificate, and path length limits.
-• Certificate Policies: Describes the policies under which the certificate was issued.
-• CRL Distribution Points: Lists locations where the Certificate Revocation List (CRL) can be found.
-• Authority Information Access: Provides the location of the CA’s OCSP responder and/or the issuing CA certificate.
-• Issuer Alternative Name: Provides alternative names for the issuer (multiple domain names or email addresses).
-• Authority Key Identifier: Identifies the public key corresponding to the private key used to sign the certificate.
-• Subject Key Identifier: A hash value that identifies the public key in the certificate (used for path building).
-• Signature: The digital signature of the certificate generated by the CA.
-• Thumbprint/Fingerprint: A hash (SHA-1 or SHA-256) of the entire certificate, used to uniquely identify it.
-
-"""
-"""
-class that scans ssl/tls protocol of the server for vulnerabilties, 
-based on version, certificate, ciphers and other common vulnerable implementations options and try some attacks.
-
-scan can be set on different modes
-
-		self._scan_protocol_versions()
-		self._scan_compression()
-		self._scan_secure_renegotiation()
-		self._scan_cipher_suite_accepted()
-		self._check_ocsp()
-		self._check_bad_sni_response()
-		self._check_heartbeat()
-		self._check_session_ticket()
-		self._check_hsts()
-
-		
-
-KNOWN COMMON TLS VULNERABILITIES:
-
-1. POODLE (Padding Oracle On Downgraded Legacy Encryption)
-Affected Protocol: SSL 3.0
-Description: This vulnerability allows an attacker to perform a man-in-the-middle (MITM) attack and decrypt data transmitted between the client and server by exploiting SSL 3.0's fallback mechanism.
-Mitigation: Disable SSL 3.0 and enforce the use of more secure TLS versions.
-2. Heartbleed (CVE-2014-0160)
-Affected Protocol: OpenSSL (TLS Heartbeat Extension)
-Description: Heartbleed is a buffer over-read vulnerability that allows attackers to read sensitive information (such as private keys and session cookies) from a server's memory.
-Mitigation: Update OpenSSL to a patched version (1.0.1g or later).
-3. BEAST (Browser Exploit Against SSL/TLS)
-Affected Protocol: TLS 1.0
-Description: BEAST is a cipher-block chaining (CBC) vulnerability that enables an attacker to decrypt HTTPS requests by injecting code in a man-in-the-middle attack.
-Mitigation: Upgrade to TLS 1.1 or TLS 1.2, or use a different cipher suite (such as RC4).
-4. CRIME (Compression Ratio Info-leak Made Easy)
-Affected Protocol: TLS (with compression enabled)
-Description: CRIME exploits TLS-level data compression (DEFLATE) to leak information from encrypted connections by comparing compressed sizes.
-Mitigation: Disab://security.stackexchange.com/questions/19911/crime-how-to-beat-the-beast-successor/19914#19914
-5. BREACH (Browser Reconnaissance and Exfiltration via Adaptive Compression of Hypertext)le TLS compression.X
-References: https
-Affected Protocol: TLS (with HTTP compression)
-Description: BREACH attacks the HTTP compression used over TLS to extract secrets from HTTPS responses.
-Mitigation: Disable HTTP compression, use random padding, or employ techniques like separating secrets from user input.
-6. FREAK (Factoring RSA Export Keys)
-Affected Protocol: TLS
-Description: FREAK exploits a vulnerability that forces servers to downgrade RSA keys to export-grade (weaker) encryption, allowing attackers to decrypt communications.
-Mitigation: Ensure proper configuration by disabling export cipher suites.
-7. Logjam
-Affected Protocol: TLS (with Diffie-Hellman key exchange)
-Description: Logjam exploits weaknesses in the Diffie-Hellman key exchange, allowing an attacker to downgrade the connection to use weaker, export-grade parameters.
-Mitigation: Disable support for weak Diffie-Hellman groups and enforce stronger cryptographic settings.
-8. DROWN (Decrypting RSA with Obsolete and Weakened eNcryption)
-Affected Protocol: SSLv2 and some TLS servers
-Description: DROWN allows attackers to decrypt TLS sessions by exploiting vulnerabilities in servers that still support SSLv2, even if TLS is being used for the actual session.
-Mitigation: Disable SSLv2 and ensure all private keys are not shared between SSLv2 and TLS services.
-9. Sweet32
-Affected Protocol: TLS (with 64-bit block ciphers like 3DES)
-Description: Sweet32 exploits the use of 64-bit block ciphers, allowing attackers to recover plaintext from encrypted data through a birthday attack.
-Mitigation: Use modern 128-bit or higher block ciphers (such as AES).
-10. ROBOT (Return Of Bleichenbacher’s Oracle Threat)
-Affected Protocol: TLS (using RSA encryption)
-Description: ROBOT is a vulnerability in RSA encryption used in TLS, allowing attackers to recover the plaintext of encrypted messages by sending specially crafted queries.
-Mitigation: Apply software patches and disable RSA key exchange in favor of more secure alternatives like Diffie-Hellman or elliptic-curve cryptography (ECC).
-11. Ticketbleed (CVE-2016-9244)
-Affected Protocol: TLS (in certain implementations like F5 BIG-IP)
-Description: Ticketbleed exploits session tickets in TLS, leaking up to 31 bytes of uninitialized memory, potentially exposing sensitive information.
-Mitigation: Update to patched versions of affected software.
-12. Raccoon Attack (CVE-2020-1968)
-Affected Protocol: TLS (with Diffie-Hellman key exchange)
-Description: The Raccoon attack is a timing attack on the TLS handshake process when using Diffie-Hellman key exchange, allowing attackers to recover parts of the session key.
-Mitigation: Ensure that timing variations in cryptographic operations are reduced and move to safer key exchange mechanisms like elliptic-curve Diffie-Hellman (ECDHE).
-13. Zombie POODLE and GOLDENDOODLE
-Affected Protocol: TLS 1.2 (certain implementations)
-Description: Variants of the POODLE attack that affect certain modern TLS implementations. These attacks can lead to the decryption of data.
-Mitigation: Use the latest patched TLS libraries and avoid vulnerable cipher suites.
-14. ALPACA (Application Layer Protocol Confusion Attack)
-Affected Protocol: TLS (multi-protocol servers)
-Description: ALPACA leverages cross-protocol attacks by redirecting traffic intended for one protocol (e.g., HTTPS) to another protocol (e.g., FTPS), potentially leading to session hijacking.
-Mitigation: Implement strict protocol-specific validation, isolate services, and ensure SNI (Server Name Indication) is properly used.
-15. TLS 1.3 Downgrade Attack
-Affected Protocol: TLS 1.3
-Description: Attackers can force a downgrade from TLS 1.3 to older, less secure versions like TLS 1.2, which are susceptible to attacks like BEAST or CRIME.
-Mitigation: Ensure strict support for TLS 1.3 and use downgrade-resistant mechanisms like the downgrade sentinel in modern libraries.
-16. CCS Injection
-OpenSSL before 0.9.8za, 1.0.0 before 1.0.0m, and 1.0.1 before 1.0.1h does not properly restrict processing of ChangeCipherSpec messages, 
-which allows man-in-the-middle attackers to trigger use of a zero-length master key in certain OpenSSL-to-OpenSSL communications, 
-and consequently hijack sessions or obtain sensitive information, via a crafted TLS handshake, aka the "CCS Injection" vulnerability.
-"""
-
-
 import socket, sys, os, ssl
 
 import logging
@@ -216,7 +31,12 @@ TLS13_CIPHERS = [4869, 4868, 4867, 4866, 4865]
 TLS12_CIPHERS = [52243, 52245, 4866,4867,4865,49196,49200,159,52393,52392,52394,49195,49199,158,49188,49192,107,49187,49191,49162,49172,57,49161,49171,51,157,156,61,60,53,47,255]
 TLS11_CIPHERS = [60, 61, 51, 107, 49169, 49171, 49172]
 TLS10_CIPHERS = [5, 4, 10, 60, 61, 22, 51, 107, 49169, 49170, 49171, 49172]
-SSL30_CIPHERS = [5, 4, 10, 60, 61, 22, 51, 107, 49169, 49170, 49171, 49172]
+SSL30_CIPHERS = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+    42, 43, 44, 45, 67, 68, 69, 70, 71, 72, 77, 132, 133, 134, 135, 136, 137, 138,
+    139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150
+]
 ciphers = {
 		768: SSL30_CIPHERS,
 		769: TLS10_CIPHERS,
@@ -225,16 +45,13 @@ ciphers = {
 		772: TLS13_CIPHERS
 }
 
-SUPP_CV_GROUPS = [24, 23, 22, 21, 29] # da aggiungere X25519Kyber768Draft00
-SUPP_CV_GROUPS_test  = [24, 23, 29] 
-SIGN_ALGS = [1027,1283,1539,2055,2053,2054,1025,1281,1537]
 
 warnings.filterwarnings("ignore")
 logging.getLogger("scapy").setLevel(logging.CRITICAL)
 
 class TLSscanner():
 
-		def __init__(self, target, dstport=443, sourceAddress=None, groups=SUPP_CV_GROUPS_test, sign_algs=SIGN_ALGS):
+		def __init__(self, target, dstport, sourceAddress, groups, sign_algs):
 			self.target = target
 			self.port = dstport
 			self.local = False if self.port==443 else True
@@ -313,6 +130,8 @@ class TLSscanner():
 			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=(pk_fitler if pk_fitler else f"src host {self.target}"), stop_filter= (stop_filter if stop_filter else lambda x: x.haslayer(TLS)))
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
+		# get all supported versions of tls/ssl
+		# based on supported versions, some vulneabilities are deduced 
 		def get_supportedProtocols(self):
 			self.supportedProtocols, self.NotsupportedProtocols = [], []
 			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
@@ -791,26 +610,6 @@ class TLSscanner():
 			sniffer.start()
 			ch_pk = self.craft_clientHello(cmp=False)
 			self.send(ch_pk)
-			"""
-			resp_pk = sr1(IP(), TCP(), ch_pk, iface="lo0")
-			if resp_pk.haslayer(Raw):
-				pass
-			elif resp_pk.haslayer(TLSServerHello):
-				if 0x01 in resp_pk[TLSServerHello].comp:
-					print(f"Server is vulnerable to CRIME attack, server supports compression")
-					self.close_socket()
-				else:
-					print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
-					self.close_socket()
-			elif resp_pk.haslayer(TLSAlert):
-				print(f"Alert record received as response to client hello, server does not support compression")
-				self.close_socket()
-			elif(resp_pk.haslayer(TCP) and (resp_pk[TCP].flags == 20 or resp_pk[TCP].flags == 11)):
-				print(f"Connection close received, CRIME likely not possible")
-				self.close_socket()
-			else:
-				pass
-			"""
 			sniffer.join()
 
 		def check_crime_response(self, pk):
@@ -842,6 +641,9 @@ class TLSscanner():
 			else:
 				pass
 
+		def check_ticketBleed(self):
+			pass
+		
 		def ssl_handshake(self):
 			try:
 				self.ssl_sock.do_handshake()
