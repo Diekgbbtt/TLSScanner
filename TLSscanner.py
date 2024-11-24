@@ -140,7 +140,7 @@ class TLSscanner():
 		# based on supported versions, some vulneabilities are deduced 
 		def get_supportedProtocols(self):
 			self.supportedProtocols =[]
-			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLSServerHello) or x.haslayer(TLSAlert) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 
 			for i in range(768, 773):
 				self.connect()
@@ -155,13 +155,11 @@ class TLSscanner():
 		def check_protos(self, version, srv_hello):
 			try:
 				if srv_hello.haslayer(TLSServerHello):
-					print(f"srv hello received: \n {srv_hello[TLS].show()}")
+					print(f"supported version {version}")
 					self.supportedProtocols.append(version)
 					self.close_socket()
 				elif srv_hello.haslayer(TLSAlert):
-					if (srv_hello[TLS].msg[0].level == 2 and srv_hello[TLS].msg[0].descr == 70):
-						# print(f"{version} not supported")
-						# print(f"not supported version srv_hello: \n {srv_hello[TLS].show()}")
+					if srv_hello[TLSAlert].descr == 70 or srv_hello[TLSAlert].descr == 0:
 						self.close_socket()
 				
 				elif(srv_hello.haslayer(TCP) and (srv_hello[TCP].flags == 20 or srv_hello[TCP].flags == 11)):
@@ -685,8 +683,6 @@ class TLSscanner():
 										(TLS_Ext_CSR(req=ocsp_status_req, stype=1) if ocsp_status_req else []), \
 										(TLS_Ext_RenegotiationInfo(renegotiated_connection=b'') if renego_info else [])])])
 			
-				ch_pk[TLS].len = len(raw(ch_pk[TLSClientHello]))
-
 				if(version==772):
 					ch_pk.msg[0].ext.append(TLS_Ext_KeyShare_CH(client_shares=[]))
 					pubkeys = self.generate_keys(crvs=groups)

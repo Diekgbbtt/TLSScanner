@@ -50,7 +50,7 @@ class test_TLSscanner():
  
 if __name__ == "__main__":
 
-    scanner = test_TLSscanner(target="tls13.xargs.org", dstport=443) 
+    scanner = test_TLSscanner(target="juice-shop.herokuapp.com", dstport=443) 
     scanner.test_protocol_versions()
     # scanner.test_get_certificate()
     # scanner.test_get_certificate_chain()
