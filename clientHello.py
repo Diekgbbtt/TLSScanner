@@ -45,9 +45,233 @@ def get_args():
 
 def tlsScan(args):
      
-    scan_result = TLSscanner.TLSscanner(target=args.target, dstport=args.port, sourceAddress=args.sourceaddress, groups=args.curves, sign_algs=args.sign_algs).scan()
+    scanner = TLSscanner.TLSscanner(target=args.target, dstport=args.port, sourceAddress=args.sourceaddress, groups=args.curves, sign_algs=args.sign_algs)
+    scanner.scan()
 
-     
+    print(f"""
+          
+        {args.target} TLS scan completed
+
+        ########################################################################################
+        #                                                                                      #
+        #                                                                                      #
+        #                                                                                      #
+        """)
+    for sp in scanner.supportedProtocols:
+
+        match sp:
+            case 768:
+                print(
+                f"""
+                #                                                                                      #
+                #    SSLV3.0 : SUPPORTED                                                               #
+                #    |\                                                                                #      
+                #    | \__ CIPHERS :                                                                   #
+                """)
+
+                for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
+                    print(
+                        f"""
+                        #    |     {index} : {cipher}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ CURVES :                                                                    #
+                    """)
+                    
+                for index, curve in enumerate(scanner.supportedCurves):
+                    print(
+                        f"""
+                        #    |     {index} : {curve}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ SIGN ALGORITHMS :                                                           #
+                    """)
+                for index, alg in enumerate(scanner.supportedAlgs):
+                    print(
+                        f"""
+                        #    |     {index} : {alg}                                                             #
+                        """)
+                print(
+                    f"""
+                    #                                                                                      #
+                    #                                                                                      #
+                    #####       #####       #####       #####       #####       #####       #####       ####
+                    """)
+                                                                                  #
+        
+            case 769:
+                print(
+                f"""
+                #                                                                                      #
+                #    TLS1.0 : SUPPORTED                                                               #
+                #    |\                                                                                #      
+                #    | \__ CIPHERS :                                                                   #
+                """)
+
+                for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
+                    print(
+                        f"""
+                        #    |     {index} : {cipher}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ CURVES :                                                                    #
+                    """)
+                    
+                for index, curve in enumerate(scanner.supportedCurves):
+                    print(
+                        f"""
+                        #    |     {index} : {curve}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ SIGN ALGORITHMS :                                                           #
+                    """)
+                for index, alg in enumerate(scanner.supportedAlgs):
+                    print(
+                        f"""
+                        #    |     {index} : {alg}                                                             #
+                        """)
+                print(
+                    f"""
+                    #                                                                                      #
+                    #                                                                                      #
+                    #####       #####       #####       #####       #####       #####       #####       ####
+                    """)
+            case 770:
+                print(
+                f"""
+                #                                                                                      #
+                #    TLS1.1 SUPPORTED                                                               #
+                #    |\                                                                                #      
+                #    | \__ CIPHERS :                                                                   #
+                """)
+
+                for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
+                    print(
+                        f"""
+                        #    |     {index} : {cipher}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ CURVES :                                                                    #
+                    """)
+                    
+                for index, curve in enumerate(scanner.supportedCurves):
+                    print(
+                        f"""
+                        #    |     {index} : {curve}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ SIGN ALGORITHMS :                                                           #
+                    """)
+                for index, alg in enumerate(scanner.supportedAlgs):
+                    print(
+                        f"""
+                        #    |     {index} : {alg}                                                             #
+                        """)
+                print(
+                    f"""
+                    #                                                                                      #
+                    #                                                                                      #
+                    #####       #####       #####       #####       #####       #####       #####       ####
+                    """)
+            case 771:
+                print(
+                f"""
+                #                                                                                      #
+                #    TLS1.2 SUPPORTED                                                               #
+                #    |\                                                                                #      
+                #    | \__ CIPHERS :                                                                   #
+                """)
+
+                for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
+                    print(
+                        f"""
+                        #    |     {index} : {cipher}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ CURVES :                                                                    #
+                    """)
+                    
+                for index, curve in enumerate(scanner.supportedCurves):
+                    print(
+                        f"""
+                        #    |     {index} : {curve}                                                          #
+                        """)
+                print(
+                    f"""
+                    #    |\                                                                                #
+                    #    | \__ SIGN ALGORITHMS :                                                           #
+                    """)
+                for index, alg in enumerate(scanner.supportedAlgs):
+                    print(
+                        f"""
+                        #    |     {index} : {alg}                                                             #
+                        """)
+                print(
+                f"""
+                #                                                                                      #
+                #                                                                                      #
+                #####       #####       #####       #####       #####       #####       #####       ####
+                """)
+            case 772:
+                print(
+                f"""
+                #                                                                                      #
+                #    TLS1.3 SUPPORTED                                                                  #
+                #    |\                                                                                #      
+                #    | \__ CIPHERS :                                                                   #
+                """)
+
+                for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
+                    print(
+                        f"""
+                        #    |     {index} : {cipher}                                                          #
+                        """)
+                print(
+                f"""
+                #    |\                                                                                #
+                #    | \__ CURVES :                                                                    #
+                """)
+                    
+                for index, curve in enumerate(scanner.supportedCurves):
+                    print(
+                        f"""
+                        #    |     {index} : {curve}                                                          #
+                        """)
+                print(
+                f"""
+                #    |\                                                                                #
+                #    | \__ SIGN ALGORITHMS :                                                           #
+                """)
+                for index, alg in enumerate(scanner.supportedAlgs):
+                    print(
+                        f"""
+                        #    |     {index} : {alg}                                                             #
+                        """)
+                print(
+                f"""
+                #                                                                                      #
+                #                                                                                      #
+                ########################################################################################
+                """)
+            case _:
+                print(f"Unsupported protocol {sp}")
+
+
+    
     """
 
     Istanziare TLSScanner - da vedere come un processo separato
