@@ -13,6 +13,8 @@ import binascii
 
 from OpenSSL import SSL
 
+from progress.bar import IncrementalBar
+
 from scapy.all import AsyncSniffer, SuperSocket, sniff
 from scapy.asn1packet import *
 from scapy.asn1fields import *
@@ -69,11 +71,17 @@ class TLSscanner():
 			asyncio.run(self.get_supportedSignalgs())
 			self.get_certificate()
 			self.get_certificate_chain()
-			self.check_secure_renegotiation()
-			self.check_scsv_fallback()
-			self.check_heartbleed()
-			self.check_ccsinjection()
-			self.check_crime()
+			with IncrementalBar(message="Scanning for know attacks", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=5) as bar:
+				self.check_secure_renegotiation()
+				bar.next()
+				self.check_scsv_fallback()
+				bar.next()
+				self.check_heartbleed()
+				bar.next()
+				self.check_ccsinjection()
+				bar.next()
+				self.check_crime()
+				bar.next()
 
 		def connect(self, ssl_context=None):
 			
@@ -105,7 +113,7 @@ class TLSscanner():
 		
 		def getIPv4(self):
 			self.targetIP= socket.gethostbyname(self.target)
-			print(self.targetIP)
+			# print(self.targetIP)
 
 
 		def check_reach(self):
@@ -139,23 +147,30 @@ class TLSscanner():
 		# get all supported versions of tls/ssl
 		# based on supported versions, some vulneabilities are deduced 
 		def get_supportedProtocols(self):
+			
 			self.supportedProtocols =[]
 			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLSServerHello) or x.haslayer(TLSAlert) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
-
-			for i in range(768, 773):
-				self.connect()
-				ch_pk = self.craft_clientHello(version=i)
-				# print(f"client_hello version {i} : \n {ch_pk.show()}")
-				self.sniffer.start()
-				self.send(ch_pk)
-				self.sniffer.join()
-			pass
+			with IncrementalBar(message=rf"Scanning supported versions", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=5) as bar:
+				for i in range(768, 773):
+					self.connect()
+					ch_pk = self.craft_clientHello(version=i)
+					# print(f"client_hello version {i} : \n {ch_pk.show()}")
+					self.sniffer.start()
+					self.send(ch_pk)
+					self.sniffer.join()
+					bar.next()
+			
+			"""		
+			for sp in self.supportedProtocols:
+				print(f"supported version {sp}")
+			"""
+			
 	
 	
 		def check_protos(self, version, srv_hello):
 			try:
 				if srv_hello.haslayer(TLSServerHello):
-					print(f"supported version {version}")
+					# print(f"supported version {version}")
 					self.supportedProtocols.append(version)
 					self.close_socket()
 				elif srv_hello.haslayer(TLSAlert):
@@ -181,14 +196,17 @@ class TLSscanner():
 			self.ciphers_info = {}
 			for sp in self.supportedProtocols:
 				self.ciphers_info[sp] = {"supportedCiphers": [], "notsupportedCiphers": []}
-			for sp in self.ciphers_info:
-				for cipher in ciphers[sp]:
-					task = self.check_cipher_support(sp=sp, cipher=cipher)
-					tasks.append(task)
-				await asyncio.gather(*tasks)
-				tasks.clear()
-				time.sleep(2)
-			
+			with IncrementalBar(message=rf"Checking supported ciphers", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=sum(len(ciphers[sp]) for sp in self.supportedProtocols)+len(self.supportedProtocols)) as bar:
+				for sp in self.ciphers_info:
+					for cipher in ciphers[sp]:
+						task = self.check_cipher_support(sp=sp, cipher=cipher)
+						tasks.append(task)
+						bar.next()
+					await asyncio.gather(*tasks)
+					tasks.clear()
+					bar.next()
+					time.sleep(0.2)
+			"""
 			for tls_version in self.ciphers_info:
 				print(f"Ciphers information for TLS version {tls_version} : \n")
 				for cipher in self.ciphers_info[tls_version]["supportedCiphers"]:
@@ -196,6 +214,7 @@ class TLSscanner():
 				for cipher in self.ciphers_info[tls_version]["notsupportedCiphers"]:
 					print(f"cipher {cipher} not supported")
 				print("\n\n")
+			"""
 		
 
 		async def check_cipher_support(self, sp, cipher):
@@ -218,13 +237,13 @@ class TLSscanner():
 		def check_cipher(self, cipher, version, srv_hello):
 			try:
 				if srv_hello.haslayer(TLS):
-					print(f"response with TLS record received")
+					# print(f"response with TLS record received")
 					if srv_hello[TLS].type == 22:
-						print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
+						# print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
 						self.ciphers_info[version]["supportedCiphers"].append(srv_hello[TLSServerHello].cipher)
 					elif srv_hello[TLS].type == 21:
 						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
-							print(f"{cipher} not supported")
+							# print(f"{cipher} not supported")
 							# print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
 							self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
 					else:
@@ -249,19 +268,21 @@ class TLSscanner():
 		async def get_supportedSignalgs(self):
 			self.supportedAlgs, self.NotsupportedAlgs = [], []
 			tasks = []
-			
-			for alg in self.sign_algs:
-				task = self.check_alg_support(alg=alg)
-				tasks.append(task)
-				await asyncio.gather(*tasks)
-				tasks.clear()
-
+			with IncrementalBar(message=rf"Checking supported algs", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=(len(self.sign_algs))) as bar:
+				for alg in self.sign_algs:
+					task = self.check_alg_support(alg=alg)
+					tasks.append(task)
+					await asyncio.gather(*tasks)
+					tasks.clear()
+					bar.next()
+			"""
 			print("\n")	
 			for sa in self.supportedAlgs:
 				print(f"alg {sa} supported")
 			print("\n")
 			for nsa in self.NotsupportedAlgs:
 				print(f"alg {nsa} not supported")
+			"""
 
 		async def check_alg_support(self, alg):
 			
@@ -280,14 +301,14 @@ class TLSscanner():
 		def check_alg(self, srv_hello, alg):
 			try:
 				if srv_hello.haslayer(TLS):
-					print(f"response with TLS record received")
+					# print(f"response with TLS record received")
 					if srv_hello[TLS].type == 22:
-						print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
+						# print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
 						self.supportedAlgs.append(alg)
 					elif srv_hello[TLS].type == 21:
 						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
 							self.NotsupportedAlgs.append(alg)
-							print(f"{alg} not supported")
+							# print(f"{alg} not supported")
 							# print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
 					else:
 						pass
@@ -297,7 +318,7 @@ class TLSscanner():
 					# print(f"{srv_hello[TCP].flags}")
 					# srv_hello.show()
 					self.NotsupportedAlgs.append(alg)
-					print(f"{alg} not supported")
+					# print(f"{alg} not supported")
 					self.close_socket()
 				else:
 					self.close_socket()
@@ -312,19 +333,21 @@ class TLSscanner():
 		async def get_supportedCurves(self):
 			self.supportedCurves, self.NotsupportedCurves = [], []
 			tasks = []
-			
-			for curve in self.groups:
-				task = self.check_curve_support(curve=curve)
-				tasks.append(task)
-				await asyncio.gather(*tasks)
-				tasks.clear()
-
+			with IncrementalBar(message=rf"Checking supported curves", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=len(self.groups)) as bar:
+				for curve in self.groups:
+					task = self.check_curve_support(curve=curve)
+					tasks.append(task)
+					await asyncio.gather(*tasks)
+					tasks.clear()
+					bar.next()
+			"""
 			print("\n")	
 			for sc in self.supportedCurves:
 				print(f"curve {sc} supported")
 			print("\n")
 			for nsc in self.NotsupportedCurves:
 				print(f"curve {nsc} not supported")
+			"""
 
 		async def check_curve_support(self, curve):
 			
@@ -343,14 +366,14 @@ class TLSscanner():
 		def check_curve(self, srv_hello, curve):
 			try:
 				if srv_hello.haslayer(TLS):
-					print(f"response with TLS record received")
+					# print(f"response with TLS record received")
 					if srv_hello[TLS].type == 22:
 						# print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
 						self.supportedCurves.append(curve)
 					elif srv_hello[TLS].type == 21:
 						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
 							self.NotsupportedCurves.append(curve)
-							print(f"{curve} not supported")
+							# print(f"{curve} not supported")
 							# print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
 					else:
 						pass
@@ -360,7 +383,7 @@ class TLSscanner():
 					# print(f"{srv_hello[TCP].flags}")
 					# srv_hello.show()
 					self.NotsupportedCurves.append(curve)
-					print(f"{curve} not supported")
+					# print(f"{curve} not supported")
 					self.close_socket()
 				else:
 					self.close_socket()
@@ -427,9 +450,12 @@ class TLSscanner():
 			cert_list = self.ssl_sock.get_peer_cert_chain()
 
 			if cert_list:
-
-				for i in range (1, len(cert_list)):
-					self.analyze_certificates(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=(True if i==1 else False))
+				with IncrementalBar(message=rf"Scanning certificate chain", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=len(cert_list)) as bar:
+					for i in range (1, len(cert_list)):
+						self.analyze_certificates(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=(True if i==1 else False))
+						bar.next()
+					bar.next()
+				
 
 		def analyze_certificates(self, child_cert, parent_cert, leaf=False):
 			
@@ -475,19 +501,19 @@ class TLSscanner():
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
 						self.srv_certificate.is_keyUsage_correct = False
-						print(f"keyUsage with ECDH/AES/CHACHA cipher suite not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
+						# print(f"keyUsage with ECDH/AES/CHACHA cipher suite not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 				elif self.ssl_sock.get_cipher_name().startswith("RSA"):
 					if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyEncipherment' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==2 and 'serverAuth' in scapy_child_cert.extKeyUsage:
 						self.srv_certificate.is_keyUsage_correct = True
 					else:
 						self.srv_certificate.is_keyUsage_correct = False
-						print(f"keyUsage with RSA cipher suite not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
+						# print(f"keyUsage with RSA cipher suite not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 			else:
 				if 'digitalSignature' in scapy_child_cert.keyUsage and 'keyCertSign' in scapy_child_cert.keyUsage and 'cRLSign' in scapy_child_cert.keyUsage and len(scapy_child_cert.keyUsage)==3:
 					self.CA_certificate.is_keyUsage_correct = True
 				else:
 					self.CA_certificate.is_keyUsage_correct = False
-					print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
+					# print(f"keyUsage not correct: {', '.join(usage for usage in scapy_child_cert.keyUsage)}")
 
 			# verify extensions of parent cert for missing details in scapy structured cert
 			crypto_parent_cert = parent_cert.to_cryptography()
@@ -501,7 +527,7 @@ class TLSscanner():
 					case "subjectKeyIdentifier":
 							if not crypto_parent_cert.extensions[i].value.key_identifier == Cert(crypto_child_cert.public_bytes(encoding=serialization.Encoding.DER)).authorityKeyID:
 								self.valid_cert_chain =	False
-								print("SubjectKeyId leaf and AuthorityKeyId parent not matching, chain is not valid")
+								# print("SubjectKeyId leaf and AuthorityKeyId parent not matching, chain is not valid")
 								continue
 							else :
 								self.valid_cert_chain = True
@@ -567,27 +593,32 @@ class TLSscanner():
 			self.send(hb_pk)
 			sniffer.join()
 			if self.sock:
-				print(f"Expected response not received and no leakeage of data, server does not seem to be vulnerable to Heartbleed")
+				# print(f"Expected response not received and no leakeage of data, server does not seem to be vulnerable to Heartbleed")
+				self.heartbleed = False
 				self.close_socket()
 		
 		def check_heartbeat_response(self, pk):
 			if pk.haslayer(Raw):
 				if pk[Raw].load.startswith(b'\x18') and pk[TCP].sport == 8443:
-					print(f"Server is vulnerable to heartbleed attack, {len(pk[Raw].load)} bytes of data leaked: ")
+					# print(f"Server is vulnerable to heartbleed attack, {len(pk[Raw].load)} bytes of data leaked: ")
 					self.hexdump(pk[Raw].load)
+					self.heartbleed = True
 					self.close_socket()
 				elif pk[Raw].load.startswith(b'\x15'):
-					print(f"Alert received, Heartbleed likely not possible")
+					# print(f"Alert received, Heartbleed likely not possible")
+					self.heartbleed = False
 					self.close_socket()
 			elif pk.haslayer(TLSServerHello):
-				print(f"Server hello received, Heartbleed likely not possible")
+				# print(f"Server hello received, Heartbleed likely not possible")
+				self.heartbleed = False
 				self.close_socket()
 			elif pk.haslayer(TLSAlert):
-				print(f"TLS Alter received, server does not have heartbeat vulnerability, alert code : {pk[TLSAlert].descr}")
+				# print(f"TLS Alter received, server does not have heartbeat vulnerability, alert code : {pk[TLSAlert].descr}")
+				self.heartbleed = False
 				self.close_socket()
 		
 			elif(pk.haslayer(TCP) and (pk[TCP].flags == 20 or pk[TCP].flags == 11)) and pk[TCP].sport == 8443:
-				print(f"Connection close received, Heartbleed likely not possible")
+				# print(f"Connection close received, Heartbleed likely not possible")
 				self.close_socket()
 			else:
 				pass
@@ -603,14 +634,15 @@ class TLSscanner():
 			self.send(ccs_pk)
 			sniffer.join()
 			if self.sock:
-				print(f"No response received, server likely vulnerable to CCS injection")
+				# print(f"No response received, server likely vulnerable to CCS injection")
+				self.ccsinjection = True
 				self.close_socket()
 
 
 		def check_ccs_response(self, pk):
 			if pk.haslayer(TLSAlert):
-				pk.show()
-				print(f"Alert record received as response to the invalid CCS Message, CCS injection likely not possible")
+				self.ccsinjection = True
+				# print(f"Alert record received as response to the invalid CCS Message, CCS injection likely not possible")
 				self.close_socket()
 			else:
 				pass
@@ -628,26 +660,29 @@ class TLSscanner():
 				srv_hello = TLS(pk[Raw].load)
 				if srv_hello.haslayer(TLSServerHello):
 					if 0x01 in srv_hello[TLSServerHello].comp:
-						print(f"Server is vulnerable to CRIME attack, server supports compression")
+						# print(f"Server is vulnerable to CRIME attack, server supports compression")
+						self.crime = True
 						self.close_socket()
 					else:
-						print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
+						self.crime = False
+						# print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
 						self.close_socket()
-				else:
-					srv_hello.show()
 			elif pk.haslayer(TLSServerHello):
-				pk.show()
 				if 0x01 in pk[TLSServerHello].comp:
-					print(f"Server is vulnerable to CRIME attack, server supports compression")
+					# print(f"Server is vulnerable to CRIME attack, server supports compression")
+					self.crime = True
 					self.close_socket()
 				else:
-					print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
+					# print(f"Server is not vulnerable to CRIME attack, server does not support compression with DEFLATE algorithm")
+					self.crime = False
 					self.close_socket()
 			elif pk.haslayer(TLSAlert):
-				print(f"Alert record received as response to client hello, server does not support compression")
+				# print(f"Alert record received as response to client hello, server does not support compression")
+				self.crime = False
 				self.close_socket()
 			elif(pk.haslayer(TCP) and (pk[TCP].flags == 20 or pk[TCP].flags == 11)):
-				print(f"Connection close received, CRIME likely not possible")
+				# print(f"Connection close received, CRIME likely not possible")
+				self.crime = False
 				self.close_socket()
 			else:
 				pass
@@ -660,12 +695,12 @@ class TLSscanner():
 				self.ssl_sock.do_handshake()
 			except Exception as e:
 				if "unexpected record" or "Unexpected EOF" in str(e):
-					print("server likely does not support renegotiation")
+					# print("server likely does not support renegotiation")
 					self.is_renegotiation_supported = False
 					self.ssl_sock.close()
 					return False
 				else:
-					print(f"Handshake failed due to exception : {e}")
+					# print(f"Handshake failed due to exception : {e}")
 					self.ssl_sock.close()
 					exit(1)
 
@@ -805,7 +840,7 @@ class TLSscanner():
 
 
 if __name__ == "__main__":
-	scanner = TLSscanner(target="juice-shop.herokuapp.com", dstport=443, sourceAddress=None, groups=SUPP_CV_GROUPS, sign_algs=SIGN_ALGS ) 
+	scanner = TLSscanner(target="www.acmilan.com", dstport=443, sourceAddress=None, groups=SUPP_CV_GROUPS, sign_algs=SIGN_ALGS ) 
 	scanner.scan()
 
 

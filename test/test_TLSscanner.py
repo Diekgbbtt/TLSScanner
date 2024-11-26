@@ -52,6 +52,9 @@ if __name__ == "__main__":
 
     scanner = test_TLSscanner(target="juice-shop.herokuapp.com", dstport=443) 
     scanner.test_protocol_versions()
+    scanner.test_cipher_suites()
+    scanner.test_curves()
+    scanner.test_algorithms()
     # scanner.test_get_certificate()
     # scanner.test_get_certificate_chain()
     # scanner.test_check_secure_renegotiation()
