@@ -3,6 +3,10 @@
 
 import sys, argparse, logging, warnings
 
+from scapy.layers.tls.crypto.suites import _tls_cipher_suites
+from scapy.layers.tls.crypto.groups import _tls_named_curves
+from scapy.layers.tls.keyexchange import _tls_hash_sig
+
 import TLSscanner
 
 
@@ -63,93 +67,92 @@ def tlsScan(args):
         match sp:
             case 768:
                 print(
-    f"""#                                                                                      #
+f"""        #                                                                                      #
         #    SSLV3.0 : SUPPORTED                                                               #
         #    |\                                                                                #      
         #    | \__ CIPHERS :                                                                   #""")
 
                 for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
                     print(
-    f"""#    |     {index} : {cipher}                                                          #""")
+f"""        #    |     {index:<2} : {_tls_cipher_suites[cipher]:<40}                               #""")
                 print(
-    f"""#                                                                                      #
-        #                                                                                      #
+f"""        #                                                                                      #
         #####       #####       #####       #####       #####       #####       #####       ####""")
                                                                                   #
         
             case 769:
                 print(
-    f"""#                                                                                      #
+f"""        #                                                                                      #
         #    TLS1.0 : SUPPORTED                                                                #
         #    |\                                                                                #      
         #    | \__ CIPHERS :                                                                   #""")
                 for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
                     print(
-    f"""#    |     {index} : {cipher}                                                          #""")
+f"""        #    |     {index:<2} : {_tls_cipher_suites[cipher]:<40}                               #""")
                 print(
-    f"""#                                                                                      #
-        #                                                                                      #
+f"""        #                                                                                      #
         #####       #####       #####       #####       #####       #####       #####       ####""")
             case 770:
-                print(    f"""
+                print(   
+f"""        #                                                                                      #
         #                                                                                      #
         #    TLS1.1 SUPPORTED                                                                  #
         #    |\                                                                                #      
         #    | \__ CIPHERS :                                                                   #""")
                 for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
-                    print(f"""
-        #    |     {index} : {cipher}                                                          #""")
-                print(f"""
-        #                                                                                      #
-        #                                                                                      #
+                    print(
+f"""        #    |     {index:<2} : {_tls_cipher_suites[cipher]:<40}                               #""")
+                print(
+f"""        #                                                                                      #
         #####       #####       #####       #####       #####       #####       #####       ####""")
             case 771:
                 print(
-    f"""#                                                                                      #
+f"""        #                                                                                      #
         #    TLS1.2 SUPPORTED                                                                  #
         #    |\                                                                                #      
         #    | \__ CIPHERS :                                                                   #""")
                 for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
                     print(    
-    f"""#    |     {index} : {cipher}                                                          #""")
+f"""        #    |     {index:<2} : {_tls_cipher_suites[cipher]:<40}                               #""")
                 print(
-    f"""#                                                                                      #
+f"""        #                                                                                      #
         #                                                                                      #
         #####       #####       #####       #####       #####       #####       #####       ####""")
             case 772:
                 print(  
-    f"""#                                                                                      #
+f"""        #                                                                                      #
         #    TLS1.3 SUPPORTED                                                                  #
         #    |\                                                                                #      
         #    | \__ CIPHERS :                                                                   #""")
                 for index, cipher in enumerate(scanner.ciphers_info[sp]["supportedCiphers"]):
                     print(
-    f"""#    |     {index} : {cipher}                                                          #""")
+f"""        #    |     {index:<2} : {_tls_cipher_suites[cipher]:<40}                               #""")
                 print(
-    f"""#                                                                                      #
-        #                                                                                      #
+f"""        #                                                                                      #
         #####       #####       #####       #####       #####       #####       #####       ####""")
             case _:
                 print(f"Unsupported protocol {sp}")
         
     print(
-f"""#    |\                                                                                #
-    #    | \__ CURVES :                                                                    #""")
+f"""        #    |\                                                                                #
+        #    | \__ CURVES :                                                                    #""")
     for index, curve in enumerate(scanner.supportedCurves):
         print(
-f"""#    |     {index} : {curve}                                                           #""")
+f"""        #    |     {index:<2} : {_tls_named_curves[curve]:<10}                                                   #""")
     print(
-f"""#    |\                                                                                #
-    #    | \__ SIGN ALGORITHMS :                                                           #""")
+f"""        #    |\                                                                                #
+        #    | \__ SIGN ALGORITHMS :                                                           #""")
     for index, alg in enumerate(scanner.supportedAlgs):
         print(
-f"""#    |     {index} : {alg}                                                             #""")
+f"""        #    |     {index:<2} : {_tls_hash_sig[alg]:<12}                                                         #""")
     print(
-f"""#                                                                                      #
-    #                                                                                      #
-    ########################################################################################""")
-
+f"""        #                                                                                      #
+        #                                                                                      #
+        ########################################################################################""")
     
+    #print server certificate retrieved information
+
+
     """
 
     Istanziare TLSScanner - da vedere come un processo separato
@@ -263,11 +266,6 @@ def start_scan():
     # parse arguments
     args = get_args()
     tlsScan(args)
-
-
-
-        
-
 
 
 

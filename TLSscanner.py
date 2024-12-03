@@ -15,7 +15,7 @@ from OpenSSL import SSL
 
 from progress.bar import IncrementalBar
 
-from scapy.all import AsyncSniffer, SuperSocket, sniff
+from scapy.all import AsyncSniffer, SuperSocket
 from scapy.asn1packet import *
 from scapy.asn1fields import *
 from scapy.layers.x509 import *
