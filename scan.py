@@ -3,6 +3,8 @@
 
 import sys, argparse, logging, warnings
 
+from base64 import b64encode
+from textwrap import fill
 from scapy.layers.tls.crypto.suites import _tls_cipher_suites
 from scapy.layers.tls.crypto.groups import _tls_named_curves
 from scapy.layers.tls.keyexchange import _tls_hash_sig
@@ -15,7 +17,7 @@ SUPP_CV_GROUPS_test  = [24, 23, 29]
 SIGN_ALGS = [1027,1283,1539,2055,2053,2054,1025,1281,1537]
 
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 
 def get_args():
@@ -62,6 +64,7 @@ def tlsScan(args):
         #                                                                                      #
         #                                                                                      #
         #                                                                                      #""")
+    # supported versions and relative ciphers
     for sp in scanner.supportedProtocols:
 
         match sp:
@@ -132,26 +135,81 @@ f"""        #                                                                   
         #####       #####       #####       #####       #####       #####       #####       ####""")
             case _:
                 print(f"Unsupported protocol {sp}")
-        
+
+# supported curves        
     print(
 f"""        #    |\                                                                                #
         #    | \__ CURVES :                                                                    #""")
     for index, curve in enumerate(scanner.supportedCurves):
         print(
-f"""        #    |     {index:<2} : {_tls_named_curves[curve]:<10}                                                   #""")
+f"""        #    |     {index:<2} : {_tls_named_curves[curve]:<10}                                                              #""")
+# supported algs
     print(
 f"""        #    |\                                                                                #
         #    | \__ SIGN ALGORITHMS :                                                           #""")
     for index, alg in enumerate(scanner.supportedAlgs):
         print(
-f"""        #    |     {index:<2} : {_tls_hash_sig[alg]:<12}                                                         #""")
+f"""        #    |     {index:<2} : {_tls_hash_sig[alg]:<10}                                                         #""")
+# report ending line
     print(
 f"""        #                                                                                      #
         #                                                                                      #
         ########################################################################################""")
     
-    #print server certificate retrieved information
+#server certificate major security information
 
+    print(
+fr"""        #                                                                                      #
+        #                                                                                      #
+        #    CERTIFICATE INFORMATION :                                                         #
+        #     \                                                                                #
+        #      \__Version : {scanner.srv_certificate.version}                                                               #
+        #      |__Subject : {scanner.srv_certificate.subject['commonName']}                                                 #
+        #      |  \__Public Key  :                                                             #
+        #                   {b64encode(scanner.srv_certificate.pubKey.der)[:120]} #                     
+        #      |    \__CorrectUsage : {'Yes' if scanner.srv_certificate.is_keyUsage_correct else 'No'}                                                  #    
+        #      |      \_Algorithm : rsaEncryption                                              #
+        #      |__Issuer : {scanner.srv_certificate.issuer['commonName']}   
+        #         \__selfSigned : {scanner.srv_certificate.isSelfSigned()}                #
+        #      |__Validity                                                                     #
+        #      |   \__FROM : {scanner.srv_certificate.notBefore_str}                                        #
+        #      |    \_TO : {scanner.srv_certificate.notAfter_str}                                           #
+        #      |__Signature :                                                                  #
+        #               {b64encode(scanner.srv_certificate.signatureValue)[:120]} #
+        #      |    \__Signature Algorithm : {scanner.srv_certificate.sigAlg}                           #   
+        #      |     \_Signature Validity :  {'Yes' if scanner.srv_certificate.is_signature_valid else 'No'}                                                #                                        
+        #      |__Serial Number : {scanner.srv_certificate.serial}                       #
+        #      |__Revoked : NO                                                                 #
+        #                                                                                      #
+        ########################################################################################""")
+    
+    if hasattr(scanner, 'CA_certificate'):
+    # certificate chain major information
+        print(
+f"""        #                                                                                      #         
+        #    CERTIFICATE CHAIN :                                                               #
+        #     \                                                                                #
+        #      \__CorrectChain : {'Yes' if scanner.valid_cert_chain else 'No'}                                                                 #
+        #      |__CA_CorrectUsage :   {'Yes' if scanner.CA_certificate.is_keyUsage_correct else 'No'}                                                      #                
+        #                                                                                      #
+        #                                                                                      #
+        ########################################################################################""")
+
+#  common attacks results
+    print(
+f"""        #                                                                                      #
+        #                                                                                      #
+        #  COMMON ATTACKS :                                                                    #
+        #  \                                                                                   #
+        #   \__HeartBleed : {'Vulnerable' if scanner.heartbleed else 'Safe'}                                                            #
+        #   |__CCSInjection : {'Vulnerable' if scanner.ccsinjection else 'Safe'}                                                        #
+        #   |__CRIME : {'Vulnerable' if scanner.crime else 'Safe'}                                                                    #
+        #   |__POODLE : {'Vulnerable' if 768 in scanner.supportedAlgs else 'Safe'}                                                                  #
+        #   |__BEAST : {'Vulnerable' if 769 in scanner.supportedAlgs else 'Safe'}                                                                   #
+        #   |__TicketBleed : Safe                                                              #
+        #                                                                                      #
+        #                                                                                      #
+        ########################################################################################""")
 
     """
 
@@ -195,7 +253,7 @@ f"""        #                                                                   
             "sign_alg" : sign_alg,
             "signature" : {
                 value : [signature]
-                "is_valid" : true/false - verificare che sia correttta con la chiave pubblica della CA, presente nnell'ext auth key identifier
+                "is_valid" : true/false - verificare che sia correttta con la chiave pubblica della CA, presente nell'ext auth key identifier
             
             }, -- che verfiche della firma del certificato si possono fare? , ..
             "issuer" : {

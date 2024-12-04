@@ -113,8 +113,6 @@ class TLSscanner():
 		
 		def getIPv4(self):
 			self.targetIP= socket.gethostbyname(self.target)
-			# print(self.targetIP)
-
 
 		def check_reach(self):
 			try:
@@ -141,7 +139,7 @@ class TLSscanner():
 		def create_sniffer(self, prn=None, stop_filter=None, pk_fitler=None):
 			if prn is None:
 				prn = self.get_tlsInfo
-			self.sniffer = AsyncSniffer(prn=prn, iface="en0", store=False, session=TCPSession, filter=(pk_fitler if pk_fitler else f"src host {self.target}"), timeout=10, stop_filter= (stop_filter if stop_filter else lambda x: x.haslayer(TLS)))
+			self.sniffer = AsyncSniffer(prn=prn, iface=("en0" if not self.local else "lo0"), store=False, session=TLSSession, filter=(f"" if self.local else (pk_fitler if pk_fitler else f"src host {self.target}")), timeout=10, stop_filter= (stop_filter if stop_filter else lambda x: x.haslayer(TLS)))
 			# not TLSSession to fetch both tls 1.2 and 1.3, as with aead ciphers in 1.3 scapy doesn't dissects messages correctly
 
 		# get all supported versions of tls/ssl
@@ -149,7 +147,7 @@ class TLSscanner():
 		def get_supportedProtocols(self):
 			
 			self.supportedProtocols =[]
-			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: (x.haslayer(TLSServerHello) or x.haslayer(TLSAlert) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+			self.create_sniffer(prn=lambda x: self.check_protos(version=i, srv_hello=x), stop_filter=lambda x: ((self.local and x.haslayer(Raw) and x[Raw].load.startswith(b'\x16')) or x.haslayer(TLSServerHello) or x.haslayer(TLSAlert) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 			with IncrementalBar(message=rf"Scanning supported versions", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=5) as bar:
 				for i in range(768, 773):
 					self.connect()
@@ -164,12 +162,21 @@ class TLSscanner():
 			for sp in self.supportedProtocols:
 				print(f"supported version {sp}")
 			"""
-			
-	
 	
 		def check_protos(self, version, srv_hello):
 			try:
-				if srv_hello.haslayer(TLSServerHello):
+				if self.local:
+					if srv_hello.haslayer(Raw):
+						tls_pk = TLS(srv_hello[Raw].load)
+						if tls_pk.haslayer(TLSServerHello):
+							self.supportedProtocols.append(version)
+							self.close_socket()
+						elif tls_pk.haslayer(TLSAlert):
+							if tls_pk[TLSAlert].descr == 70 or tls_pk[TLSAlert].descr == 40 or tls_pk[TLSAlert].descr == 0:
+								self.close_socket()
+						else:
+							pass
+				elif srv_hello.haslayer(TLSServerHello):
 					# print(f"supported version {version}")
 					self.supportedProtocols.append(version)
 					self.close_socket()
@@ -186,8 +193,8 @@ class TLSscanner():
 				else:
 					pass
 	
-			except:
-				print("not expected pkg received")
+			except Exception as e:
+				print(f"{e} \n not expected pkg received")
 
 		async def get_supportedCipherSuites(self):
 			# self.sniffer.kwargs['stop_filter'] = lambda x: x.haslayer('TLS') or (x.haslayer('TCP') and x[TCP].flags == 20)
@@ -205,7 +212,7 @@ class TLSscanner():
 					await asyncio.gather(*tasks)
 					tasks.clear()
 					bar.next()
-					time.sleep(0.2)
+					time.sleep(0.01)
 			"""
 			for tls_version in self.ciphers_info:
 				print(f"Ciphers information for TLS version {tls_version} : \n")
@@ -223,46 +230,44 @@ class TLSscanner():
 			# sock.ins.bind(('127.0.0.1', sock.ins.getsockname()[1]))
 			sock.ins.connect((self.targetIP, self.port))
 
-			sniffer = AsyncSniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
-			#self.create_sniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x))
+			sniffer = AsyncSniffer(prn=lambda x: self.check_cipher(cipher=cipher, version=sp, srv_hello=x, dport=sock.ins.getsockname()[1]), iface=("en0" if not self.local else "lo0"), store=False, session=TCPSession, filter=(f"src host {self.target} and port {sock.ins.getsockname()[1]}" if not self.local else f""), timeout=10, stop_filter=lambda x: (self.local and x.haslayer(Raw) and x[Raw].load.startswith(b'\x16')) or (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 			sniffer.start()
 			ch_pk = self.craft_clientHello(version=sp, cipher=cipher)
-			# print(f"client_hello version {sp} : \n {ch_pk.show()}")
-			# self.send(ch_pk)
 			sock.send(bytes(ch_pk))
 			sniffer.join()
 			sock.close()
 
 
-		def check_cipher(self, cipher, version, srv_hello):
+		def check_cipher(self, cipher, version, srv_hello, dport=None):
 			try:
-				if srv_hello.haslayer(TLS):
-					# print(f"response with TLS record received")
-					if srv_hello[TLS].type == 22:
-						# print(f"srv_hello received: \n {srv_hello[TLS].summary()} \n {srv_hello[TLS].show()}")
-						self.ciphers_info[version]["supportedCiphers"].append(srv_hello[TLSServerHello].cipher)
-					elif srv_hello[TLS].type == 21:
-						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
-							# print(f"{cipher} not supported")
-							# print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
-							self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
+				if self.local and srv_hello.haslayer(TCP) and srv_hello[TCP].dport == dport and srv_hello.haslayer(Raw):
+					tls_pk = TLS(srv_hello[Raw].load)
+					if tls_pk.haslayer(TLSServerHello):
+						self.ciphers_info[version]["supportedCiphers"].append(tls_pk[TLSServerHello].cipher)
+						self.close_socket()
+					elif tls_pk.haslayer(TLSAlert):
+						self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
+						self.close_socket()
 					else:
 						pass
-					self.close_socket()
-				
+				elif srv_hello.haslayer(TLS):
+					if srv_hello.haslayer(TLSServerHello):
+						self.ciphers_info[version]["supportedCiphers"].append(srv_hello[TLSServerHello].cipher)
+					elif srv_hello.haslayer(TLSAlert):
+						if (srv_hello[TLS].msg[0].level == 2):
+							self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
+							self.close_socket()
+					else:
+						pass
 				elif(srv_hello.haslayer(TCP) and (srv_hello[TCP].flags == 20 or srv_hello[TCP].flags == 11)):
-					# print("not TLS pkt received \n")
-					# print(f"{srv_hello[TCP].flags}")
-					# srv_hello.show()
 					self.ciphers_info[version]["notsupportedCiphers"].append(cipher)
 					self.close_socket()
 				else:
-					self.close_socket()
 					pass
 				return None
 			
-			except:
-				print("not expected pkg received")
+			except Exception as e:
+				print(f"{e} not expected pkg received")
 				return None
 
 		async def get_supportedSignalgs(self):
@@ -287,10 +292,9 @@ class TLSscanner():
 		async def check_alg_support(self, alg):
 			
 			sock = SuperSocket(family=socket.AF_INET,type=socket.SOCK_STREAM)
-			# sock.ins.bind(('127.0.0.1', sock.ins.getsockname()[1]))
 			sock.ins.connect((self.targetIP, self.port))
 			
-			sniffer = AsyncSniffer(prn=lambda x: self.check_alg(alg=alg, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+			sniffer = AsyncSniffer(prn=lambda x: self.check_alg(alg=alg, srv_hello=x, dport=sock.ins.getsockname()[1]), iface=("en0" if not self.local else "lo0"), store=False, session=TCPSession, filter=(f"src host {self.target} and port {sock.ins.getsockname()[1]}" if not self.local else f""), timeout=10, stop_filter=lambda x: (x.haslayer(Raw) and x[Raw].load.startswith(b'\x16')) or (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 			
 			ch_pk = self.craft_clientHello(sign_algs=alg)
 			sniffer.start()
@@ -298,30 +302,31 @@ class TLSscanner():
 			sniffer.join()
 			sock.close()
 
-		def check_alg(self, srv_hello, alg):
+		def check_alg(self, srv_hello, alg, dport=None):
 			try:
-				if srv_hello.haslayer(TLS):
-					# print(f"response with TLS record received")
+				if self.local and srv_hello.haslayer(TCP) and srv_hello[TCP].dport == dport and srv_hello.haslayer(Raw):
+					tls_pk = TLS(srv_hello[Raw].load)
+					if tls_pk.haslayer(TLSServerHello):
+						self.supportedAlgs.append(alg)
+						self.close_socket()
+					elif tls_pk.haslayer(TLSAlert):
+						self.NotsupportedAlgs.append(alg)
+						self.close_socket()
+					else:
+						pass
+				elif srv_hello.haslayer(TLS):
 					if srv_hello[TLS].type == 22:
-						# print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
 						self.supportedAlgs.append(alg)
 					elif srv_hello[TLS].type == 21:
-						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
+						if (srv_hello[TLS].msg[0].level == 2):
 							self.NotsupportedAlgs.append(alg)
-							# print(f"{alg} not supported")
-							# print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
 					else:
 						pass
 					self.close_socket()
 				elif(srv_hello.haslayer(TCP) and (srv_hello[TCP].flags == 20 or srv_hello[TCP].flags == 11)):
-					# print("not TLS pkt received \n")
-					# print(f"{srv_hello[TCP].flags}")
-					# srv_hello.show()
 					self.NotsupportedAlgs.append(alg)
-					# print(f"{alg} not supported")
 					self.close_socket()
 				else:
-					self.close_socket()
 					pass
 				return None
 			
@@ -355,7 +360,7 @@ class TLSscanner():
 			# sock.ins.bind(('127.0.0.1', sock.ins.getsockname()[1]))
 			sock.ins.connect((self.targetIP, self.port))
 			
-			sniffer = AsyncSniffer(prn=lambda x: self.check_curve(curve=curve, srv_hello=x), iface="en0", store=False, session=TCPSession, filter=f"src host {self.target} and port {sock.ins.getsockname()[1]}", timeout=10, stop_filter=lambda x: (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
+			sniffer = AsyncSniffer(prn=lambda x: self.check_curve(curve=curve, srv_hello=x, dport=sock.ins.getsockname()[1]), iface=("en0" if not self.local else "lo0"), store=False, session=TCPSession, filter=(f"src host {self.target} and port {sock.ins.getsockname()[1]}" if not self.local else f""), timeout=10, stop_filter=lambda x: (x.haslayer(Raw) and x[Raw].load.startswith(b'\x16')) or (x.haslayer(TLS) or (x.haslayer(TCP) and (x[TCP].flags == 20 or x[TCP].flags == 11))))
 			
 			ch_pk = self.craft_clientHello(groups=curve)
 			sniffer.start()
@@ -363,30 +368,31 @@ class TLSscanner():
 			sniffer.join()
 			sock.close()
 
-		def check_curve(self, srv_hello, curve):
+		def check_curve(self, srv_hello, curve, dport):
 			try:
-				if srv_hello.haslayer(TLS):
-					# print(f"response with TLS record received")
+				if self.local and srv_hello.haslayer(TCP) and srv_hello[TCP].dport == dport and srv_hello.haslayer(Raw):
+					if srv_hello.haslayer(Raw):
+						tls_pk = TLS(srv_hello[Raw].load)
+						if tls_pk.haslayer(TLSServerHello):
+							self.supportedCurves.append(curve)
+							self.close_socket()
+						elif tls_pk.haslayer(TLSAlert):
+							self.NotsupportedCurves.append(curve)
+							self.close_socket()
+						else:
+							pass
+				elif srv_hello.haslayer(TLS):
 					if srv_hello[TLS].type == 22:
-						# print(f"srv_hello received: \n {srv_hello[TLS].summary()}")
 						self.supportedCurves.append(curve)
 					elif srv_hello[TLS].type == 21:
 						if (srv_hello[TLS].msg[0].level == 2): # and srv_hello['TLS'].msg[0].descr == 70
 							self.NotsupportedCurves.append(curve)
-							# print(f"{curve} not supported")
-							# print(f"not supported cipher srv_hello: \n {srv_hello[TLS].show()}")
 					else:
 						pass
-					self.close_socket()
 				elif(srv_hello.haslayer(TCP) and (srv_hello[TCP].flags == 20 or srv_hello[TCP].flags == 11)):
-					# print("not TLS pkt received \n")
-					# print(f"{srv_hello[TCP].flags}")
-					# srv_hello.show()
 					self.NotsupportedCurves.append(curve)
-					# print(f"{curve} not supported")
 					self.close_socket()
 				else:
-					self.close_socket()
 					pass
 				return None
 			
@@ -396,7 +402,7 @@ class TLSscanner():
 		
 		def get_certificate(self):
 
-			self.create_sniffer(prn=lambda x: self.fetch_certficate_details(x), stop_filter=lambda x: x.haslayer(TLSServerHelloDone))
+			self.create_sniffer(prn=lambda x: self.fetch_certficate_details(x), stop_filter=lambda x: (self.local and x.haslayer(Raw) and TLS(x[Raw].load).haslayer(TLSServerHelloDone)) or x.haslayer(TLSServerHelloDone))
 			ocsp_status_req = OCSPStatusRequest(respid=[], reqext=None)
 			ch_pk = self.craft_clientHello(version=771, ocsp_status_req=ocsp_status_req)
 			self.connect()
@@ -408,9 +414,25 @@ class TLSscanner():
 
 		def fetch_certficate_details(self, srv_hello):
 			try:
-				if srv_hello.haslayer(TLSCertificate):
+				if self.local and srv_hello.haslayer(Raw):
+					tls_pk = TLS(srv_hello[Raw].load)
+					if tls_pk.haslayer(TLSCertificate):
+						self.srv_certificate = Cert(tls_pk[TLSCertificate].certs[0][1].der)
+					if tls_pk.haslayer(TLSCertificateStatus):
+						self.srv_certificate.valid_cert = tls_pk.haslayer(OCSP_GoodInfo)
+						if self.srv_certificate.valid_cert:
+							self.srv_certificate.revision_date = tls_pk[OCSP_SingleResponse].thisUpdate.datetime
+						elif tls_pk.haslayer(OCSP_RevokedInfo):
+							self.srv_certificate.valid_cert = False
+							self.srv_certificate.valid_cert.revocation_date = tls_pk[OCSP_RevokedInfo].revocationTime
+							self.srv_certificate.valid_cert.revocation_reason = tls_pk[OCSP_RevokedInfo].revocationReason
+					else:
+						self.srv_certificate.valid_cert = "Unknown"
+				
+				elif srv_hello.haslayer(TLSCertificate):
 					self.srv_certificate = Cert(srv_hello[TLSCertificate].certs[0][1].der)
-					self.srv_certificate.der = srv_hello[TLSCertificate].certs[0][1].der
+				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
+					print("connection terminated not accepted client hello likely")
 				if srv_hello.haslayer(TLSCertificateStatus):
 					self.srv_certificate.valid_cert = srv_hello.haslayer(OCSP_GoodInfo) # (False if isinstance(srv_hello[OCSP_CertStatus].cert_status, OCSP_GoodInfo) else True)
 					if self.srv_certificate.valid_cert:
@@ -421,15 +443,8 @@ class TLSscanner():
 						self.srv_certificate.valid_cert.revocation_reason = srv_hello[OCSP_RevokedInfo].revocationReason
 					else:
 						self.srv_certificate.valid_cert = "Unknown"
-
-				elif(srv_hello.haslayer(TCP) and srv_hello[TCP].flags == 20):
-					# print("not TLS pkt received \n")
-					# print(f"{srv_hello[TCP].flags}")
-					# srv_hello.show()
-					print("not proper client hello sent")
 				else:
 					pass
-				
 				return None
 	
 			except Exception as e:
@@ -442,19 +457,19 @@ class TLSscanner():
 			context.set_verify(SSL.VERIFY_NONE, lambda *args: True)
 
 			self.connect(ssl_context=context)
-
 			self.ssl_handshake()
-
-			self.ssl_sock.get_cipher_name()
-
 			cert_list = self.ssl_sock.get_peer_cert_chain()
 
-			if cert_list:
+			if cert_list and len(cert_list)>1:
 				with IncrementalBar(message=rf"Scanning certificate chain", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s]', color='green', max=len(cert_list)) as bar:
 					for i in range (1, len(cert_list)):
 						self.analyze_certificates(child_cert=cert_list[i-1], parent_cert=cert_list[i], leaf=(True if i==1 else False))
 						bar.next()
 					bar.next()
+			else: # self-signed cert
+				self.srv_certificate.is_keyUsage_correct = False
+				self.srv_certificate.is_signature_valid = False
+				
 				
 
 		def analyze_certificates(self, child_cert, parent_cert, leaf=False):
@@ -707,7 +722,7 @@ class TLSscanner():
 
 		def craft_clientHello(self, version=771, cipher=None, groups=SUPP_CV_GROUPS, sign_algs=SIGN_ALGS, pubkeys=None, pskkxmodes=1, ocsp_status_req=None, renego_info=False, cmp=False):
 			
-			version = 771 if self.local else version
+			# version = 771 if self.local else version
 			try:
 			    
 				ch_pk = TLS(version=(771 if version > 771 else version), type=22, msg=[TLSClientHello(version=(771 if version > 771 else version), ciphers=(cipher if cipher else ciphers[version]), random_bytes=os.urandom(32), comp=([0x01] if cmp else [0x00]), ext=[ \
