@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.12
 
 
-import sys, argparse, logging, warnings
+import sys, argparse, warnings
 from base64 import b64encode
 from scapy.layers.tls.crypto.suites import _tls_cipher_suites
 from scapy.layers.tls.crypto.groups import _tls_named_curves

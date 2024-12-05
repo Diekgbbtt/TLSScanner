@@ -1,0 +1,4 @@
+scapy==2.6.1
+pyOpenSSL==24.2.1
+progress==1.6
+asyncio==3.4.3
