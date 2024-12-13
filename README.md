@@ -1,11 +1,10 @@
 ### Table of Contents
 
-- [About the Project](https://www.notion.so/150febf8742e80dc9532c673c388b9d7?pvs=21)
-- [Pre-requisites](https://www.notion.so/150febf8742e80dc9532c673c388b9d7?pvs=21)
-- [Installation](https://www.notion.so/150febf8742e80dc9532c673c388b9d7?pvs=21)
-- [Usage](https://www.notion.so/150febf8742e80dc9532c673c388b9d7?pvs=21)
-- [Features](https://www.notion.so/150febf8742e80dc9532c673c388b9d7?pvs=21)
-- [License](https://www.notion.so/150febf8742e80dc9532c673c388b9d7?pvs=21)
+- [About the Project](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#about-the-project)
+- [Pre-requisites](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#pre-requisities)
+- [Installation](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#installation)
+- [Usage](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#usage)
+- [Features](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#features)
 
 ### About the Project
 
@@ -56,23 +55,14 @@ python [scan.py](http://scan.py) -t <target_domain>
 
 ### Features
 
-Highlight key features of the project.
-
 Get supported ssl/tls protocol versions, from sslv3.0 to tls1.3
-For each supported version, get accepted ciphersuites. Classifiy accepted ciphersuites as strong, weak or export-grade.
+For each supported version, get a classification of related ciphersuites as strong, weak or export-grade.
 Get supported elliptic curves and signature algorithms.
 Analyze TLS certificate for misleading and unsafe details, including : pkey correctness, signature, self-sign, cipher, CA sign, revocation check(OCSP), full PKI control(subject, target, key usage policies)
-
-Secure Renegotiation
-
-Heartbleed vulnerability with leaked data dump
-
-CCS Injection
-
-CRIME
-
-The scan ends with a report of potential vulnerabilities given the ssl/tls configuration retrieved
-
-### License
-
-This project is licensed under the MIT License.
+Common TLS vulnerabilities:
+ - Secure Renegotiation
+ - Heartbleed vulnerability with leaked data dump
+ - CCS Injection
+ - CRIME
+ 
+Additionally the scan ends with a report of further potential vulnerabilities given the ssl/tls configuration retrieved like POODLE, BEAST, ticketBleed.
