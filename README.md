@@ -40,18 +40,27 @@ pip install -r requirements.txt
 
 A target or list of targets to scan is always expected. Multiple targets can be specified separated by a space
 Basic usage
-'''python [scan.py](http://scan.py/) <target_domain>/<target_domains_list>'''
+```bash
+python [scan.py](http://scan.py/) <target_domain>/<target_domains_list>
+```
+
 Additionally an input txt file with domains to be scanned can be specified with option -f. Ensure the current user has read access to the file
-'''python [scan.py](http://scan.py/) -f <path_to_input_file>'''
+```bash
+python [scan.py](http://scan.py/) -f <path_to_input_file>
+```
 
 To scan a local web app specify the host default interface address and the port the app is listening on with option -p:
-'''python [scan.py](http://scan.py/) -p <port> <local_interface_address>'''
+```bash
+python [scan.py](http://scan.py/) -p <port> <local_interface_address>
+```
 
 With furhter additional options it's possible to declare custom cipher suites(-c), elliptic curves(-e) for ECDH key suites and signature algorithms(-s). All of these can be specified as a list. With elements separated by commas.
 
 ### Example command
 
+```bash
 python [scan.py](http://scan.py) -t <target_domain>
+```
 
 ### Features
 
