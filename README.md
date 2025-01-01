@@ -1,4 +1,6 @@
-### Table of Contents
+# TLSScanner
+
+## Table of Contents
 
 - [About the Project](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#about-the-project)
 - [Pre-requisites](https://github.com/Diekgbbtt/TLSScanner?tab=readme-ov-file#pre-requisities)
@@ -11,9 +13,8 @@
 Check for potential common SSL/TLS vulnerabilties. Based on SSL/TLS supported versions, certificate and certificat chain, cipher suites and resiliance to malicious payloads
 Get insights of potential threats and countermeasures
 
-Built With
-Scapy
-OpenSSL
+Built with : Scapy, OpenSSL
+
 
 ### Pre-requisities
 
@@ -26,11 +27,10 @@ git
 Clone the repository:
 
 ```bash
-git clone https://github.com/Diekgbbtt/TLSScanner.git'
+git clone https://github.com/Diekgbbtt/TLSScanner.git
 ```
 
-Navigate to the project directory
-Install dependencies:
+Navigate to the project directory and install dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -41,17 +41,17 @@ pip install -r requirements.txt
 A target or list of targets to scan is always expected. Multiple targets can be specified separated by a space
 Basic usage
 ```bash
-python [scan.py](http://scan.py/) <target_domain>/<target_domains_list>
+python scan.py <target_domain>/<target_domains_list>
 ```
 
 Additionally an input txt file with domains to be scanned can be specified with option -f. Ensure the current user has read access to the file
 ```bash
-python [scan.py](http://scan.py/) -f <path_to_input_file>
+python scan.py -f <path_to_input_file>
 ```
 
 To scan a local web app specify the host default interface address and the port the app is listening on with option -p:
 ```bash
-python [scan.py](http://scan.py/) -p <port> <local_interface_address>
+python scan.py -p <port> <local_interface_address>
 ```
 
 With furhter additional options it's possible to declare custom cipher suites(-c), elliptic curves(-e) for ECDH key suites and signature algorithms(-s). All of these can be specified as a list. With elements separated by commas.
@@ -59,7 +59,7 @@ With furhter additional options it's possible to declare custom cipher suites(-c
 ### Example command
 
 ```bash
-python [scan.py](http://scan.py) -t <target_domain>
+python scan.py -t <target_domain>
 ```
 
 ### Features
